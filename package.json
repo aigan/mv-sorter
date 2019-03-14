@@ -1,0 +1,15 @@
+{
+  "name": "mv-sorter",
+  "version": "0.0.1",
+  "flat": true,
+  "description": "A custom element that makes the content sortable",
+  "main": "mv-sorter.js",
+  "repository": "https://github.com/aigan/mv-sorter.git",
+  "author": "Jonas Liljegren <jonas@liljegren.org> (http://jonas.liljegren.org/)",
+  "license": "MIT",
+  "dependencies": {
+    "lodash": "^4.17.4",
+    "@polymer/polymer": "^3.0.0",
+    "@webcomponents/webcomponentsjs": "^1.0.20"
+  }
+}
