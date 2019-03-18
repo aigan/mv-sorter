@@ -1,5 +1,7 @@
 # &lt;mv-sorter&gt;
 
+See [Demo](https://jonas.liljegren.org/project/mv-sorter/dist/demo/).
+
 `mv-sorter` is a custom element that makes the content sortable.
 
 * Handles elements of different sizes
