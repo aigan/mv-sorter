@@ -78,3 +78,6 @@ npm install -g polymer-cli
 polymer serve --npm
 open http://127.0.0.1:<port>/demo/
 ```
+
+Or you can compile a static version to `dist` for use with a normal
+web server: `grunt demo`
