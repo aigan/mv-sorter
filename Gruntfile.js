@@ -45,10 +45,10 @@ module.exports = function(grunt) {
 				src: 'prismjs/**/*.js',
 				dest: dest,
 			},
-			lodash:{
+			'lodash-es':{
 				expand: true,
 				cwd: 'node_modules/',
-				src: 'lodash/*.js',
+				src: 'lodash-es/*.js',
 				dest: dest,
 			},
 			'mv-sorter':{

@@ -1,12 +1,40 @@
+[![Published on NPM](https://img.shields.io/npm/v/mv-sorter.svg)](https://www.npmjs.com/package/mv-sorter)
+
 # &lt;mv-sorter&gt;
+
+Drag and drop for lists as a web component.
+
+## Demo
 
 See [Demo](https://jonas.liljegren.org/project/mv-sorter/dist/demo/).
 
-`mv-sorter` is a custom element that makes the content sortable.
+## Features
+
+* Natural movement of items using kinetic momentum
+
+* Performant (using requestAnimationFrame and css translate)
+
+* Clean and powerful api
+
+* Vertical lists
+
+* Horizontal lists
+
+* Movement between lists
+
+* Supports both mouse and touch interfaces
+
+* Unopiniated styling
+
+* No creation of additional wrapper dom nodes
+
+* Accepts any html elements as draggable
+
+* Allows text selection around and inside items
 
 * Handles elements of different sizes
 
-* supports drop of element anywhere on page
+* supports drop of element anywhere on page, finding the closest availible drop area
 
 * handles changing visibility of drop zones
 
@@ -20,11 +48,8 @@ See [Demo](https://jonas.liljegren.org/project/mv-sorter/dist/demo/).
 
 * Respects the disabled attribute
 
-* Allows text selection
-
-* uses movement physics that preserves momentum
-
 * Handles changes in element and page layout during dragging and animations
+
 
 ## Usage
 
@@ -43,7 +68,7 @@ npm install --save mv-sorter
     </script>
   </head>
   <body>
-		<mv-sorter><div>A</div><div>B</div></mv-sorter>
+    <mv-sorter><div>A</div><div>B</div></mv-sorter>
   </body>
 </html>
 ```
@@ -62,6 +87,12 @@ class SampleElement extends PolymerElement {
 }
 customElements.define('sample-element', SampleElement);
 ```
+
+## Missing features
+
+* Keyboard and accessability support
+
+* Scroll viewport when items are dragged to edge
 
 ## Contributing
 If you want to send a PR to this element, here are

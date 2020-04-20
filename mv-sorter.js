@@ -1,4 +1,5 @@
-import "lodash/lodash.min.js";
+import throttle from "lodash-es/throttle.js";
+import debounce from "lodash-es/debounce.js";
 import {GestureEventListeners} from "@polymer/polymer/lib/mixins/gesture-event-listeners.js";
 import {FlattenedNodesObserver} from "@polymer/polymer/lib/utils/flattened-nodes-observer.js";
 import {PolymerElement, html} from "@polymer/polymer/polymer-element.js";
@@ -89,17 +90,17 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		mv.homes = [];
 
 		this.constructor.throttled_move =
-			_.throttle(this.constructor.throttled_move_handler,500,{trailing:false});
+			throttle(this.constructor.throttled_move_handler,500,{trailing:false});
 
 		this.constructor.throttled_anim =
-			_.throttle(this.constructor.throttled_anim_handler,5000,{trailing:false});
+			throttle(this.constructor.throttled_anim_handler,5000,{trailing:false});
 
 		/*
 			 100 ms was to short for catching both intersection observer
 			 and resize observer.
 		 */
 		this.constructor.debounced_items_moved =
-			_.debounce(MvSorter.items_moved,200);
+			debounce(MvSorter.items_moved,200);
 
 		// Import global styles to page
 		const style = document.createElement('style');
@@ -114,7 +115,7 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		
 		new FlattenedNodesObserver(this.$.main,
 															 this.nodes_changed.bind(this) );
-		mv.debounced_domchange = _.debounce(this.domchange_handler.bind(this),100);
+		mv.debounced_domchange = debounce(this.domchange_handler.bind(this),100);
 
 		this.$.main.addEventListener('dom-change',
 																 mv.debounced_domchange.bind(this) );
