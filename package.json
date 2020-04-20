@@ -35,8 +35,7 @@
   "license": "MIT",
   "dependencies": {
     "lodash-es": "^4.17.15",
-    "@polymer/polymer": "^3.0.0",
-    "@webcomponents/webcomponentsjs": "^1.0.20"
+    "@polymer/polymer": "^3.0.0"
   },
   "devDependencies": {
     "grunt": "^1.0.3",
