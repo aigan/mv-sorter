@@ -4,7 +4,7 @@ import {GestureEventListeners} from "@polymer/polymer/lib/mixins/gesture-event-l
 import {FlattenedNodesObserver} from "@polymer/polymer/lib/utils/flattened-nodes-observer.js";
 import {PolymerElement, html} from "@polymer/polymer/polymer-element.js";
 import {setPassiveTouchGestures} from "@polymer/polymer/lib/utils/settings.js";
-import {addListener} from "@polymer/polymer/lib/utils/gestures.js";
+import {addListener,removeListener} from "@polymer/polymer/lib/utils/gestures.js";
 
 const log = console.log.bind(console);
 setPassiveTouchGestures(true);
@@ -528,10 +528,10 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 
 		//log('remove_listeners disabled'); return;
 		
-		Polymer.Gestures.removeListener(node, 'tap', this.tap_handler);
-		Polymer.Gestures.removeListener(node, 'track', this.track_handler);
-		Polymer.Gestures.removeListener(node, 'down', this.down_handler);
-		Polymer.Gestures.removeListener(node, 'up', this.up_handler);
+		removeListener(node, 'tap', this.tap_handler);
+		removeListener(node, 'track', this.track_handler);
+		removeListener(node, 'down', this.down_handler);
+		removeListener(node, 'up', this.up_handler);
 
 		const container = item.container;
 		mono.dirty.add( container );
