@@ -1,19 +1,28 @@
-import throttle from "lodash-es/throttle.js";
-import debounce from "lodash-es/debounce.js";
-import {GestureEventListeners} from "@polymer/polymer/lib/mixins/gesture-event-listeners.js";
-import {FlattenedNodesObserver} from "@polymer/polymer/lib/utils/flattened-nodes-observer.js";
-import {PolymerElement, html} from "@polymer/polymer/polymer-element.js";
-import {setPassiveTouchGestures} from "@polymer/polymer/lib/utils/settings.js";
-import {addListener,removeListener} from "@polymer/polymer/lib/utils/gestures.js";
 
 const log = console.log.bind(console);
-setPassiveTouchGestures(true);
+// function log(...logargs) {
+// 	console.log(...logargs);
+// 	const $log = document.getElementById('log');
+// 	if (!$log) return;
+// 	$log.insertAdjacentText('beforeend', logargs.join(" ")+"\n");
+// }
 
-class MvSorter extends GestureEventListeners(PolymerElement) {
+function debounce(callback, time) {
+	let timeout;
+	return function () {
+		if (timeout) clearTimeout(timeout);
+		timeout = setTimeout( ()=>{
+			timeout = null;
+			callback.apply(this, arguments);
+		}, time);
+	}
+}
+
+class MvSorter extends HTMLElement {
 	
-	static get is(){ return 'mv-sorter' }
+	static is = 'mv-sorter';
 
-	static get properties(){ return {
+	static properties = {
 		row: {
 			type: Boolean,
 			observer: 'dir_changed',
@@ -28,19 +37,17 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		},
 		group: {
 			type: String,
-			reflectToAttribute: true,
 		},
 		draghandle: {
 			type: Boolean,
 		},
 		disabled: {
 			type: Boolean,
-			reflectToAttribute: true,
 		},
-	}}
+	}
 
-	static get template(){
-		return html`
+	static get template() {
+		return `
 		<style>
 		:host {
 			display: block;
@@ -71,9 +78,9 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 `;
 	}
 	
-	constructor(){
+	constructor() {
 		super();
-		if( !MvSorter._monostate ) MvSorter._monostate = {
+		if (!MvSorter._monostate) MvSorter._monostate = {
 			animQueue: new Set(),
 			items: new Map(),
 			containers: new Set(),
@@ -84,45 +91,57 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		const mv = this.mv = {}; // put our data here
 
 		const mono = mv.monostate = MvSorter._monostate;
-		mono.containers.add( this );
+		mono.containers.add(this);
 
 		mv.id = mono.containers.size;
 		mv.homes = [];
 
-		this.constructor.throttled_move =
-			throttle(this.constructor.throttled_move_handler,500,{trailing:false});
+		this.register_attributes();
 
-		this.constructor.throttled_anim =
-			throttle(this.constructor.throttled_anim_handler,5000,{trailing:false});
+		// this.constructor.throttled_move =
+		// 	throttle(this.constructor.throttled_move_handler, 500, { trailing: false });
+
+		// this.constructor.throttled_anim =
+		// 	throttle(this.constructor.throttled_anim_handler, 5000, { trailing: false });
 
 		/*
 			 100 ms was to short for catching both intersection observer
 			 and resize observer.
 		 */
 		this.constructor.debounced_items_moved =
-			debounce(MvSorter.items_moved,200);
+			debounce(MvSorter.items_moved, 200);
 
 		// Import global styles to page
 		const style = document.createElement('style');
 		style.innerHTML = 'body.mv-moving-child{cursor:move}';
-		document.body.appendChild( style );
+		document.body.appendChild(style);
 	}
 
-	connectedCallback(){
-    super.connectedCallback();
+	connectedCallback() {
+		// super.connectedCallback();
+
+		const $root = this.attachShadow({ mode: "open" });
+		$root.innerHTML = MvSorter.template;
 
 		const mv = this.mv; // put our data here
-		
-		new FlattenedNodesObserver(this.$.main,
-															 this.nodes_changed.bind(this) );
-		mv.debounced_domchange = debounce(this.domchange_handler.bind(this),100);
 
-		this.$.main.addEventListener('dom-change',
-																 mv.debounced_domchange.bind(this) );
+		const $main = mv.$main = this.$$('#main');
+		mv.$slot = this.$$('#slot');
+		mv.$dropzone = this.$$("#dropzone");
 
-		const io = new IntersectionObserver( mv.debounced_domchange.bind(this) );
-		io.observe( this );
+		this.properties_reactions();
 		
+		mv.debounced_domchange = debounce(this.domchange_handler.bind(this), 100);
+		mv.mutation_observer = new MutationObserver(this.nodes_changed.bind(this));
+		mv.mutation_observer.observe($main, { childList: true });
+
+		$main.addEventListener('dom-change', mv.debounced_domchange);
+
+		const io = new IntersectionObserver(mv.debounced_domchange);
+		io.observe(this);
+
+		mv.resize_observer = new ResizeObserver(this.container_moved.bind(this));
+
 		mv.parent_target = null; // update on dom change
 
 		this.dir_changed();
@@ -130,101 +149,127 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 
 		this.add_dropzone();
 		this.container_rect_changed();
+
+		mv.$drag_image = document.createElement('div');
+
+		mv.bound_tap_handler = this.tap_handler.bind(this);
+		mv.bound_dragstart_handler = this.dragstart_handler.bind(this);
+		mv.bound_touchstart_handler = this.touchstart_handler.bind(this);
+		mv.bound_dragend_handler = this.dragend_handler.bind(this);
+		mv.bound_touchend_handler = this.touchend_handler.bind(this);
+		mv.bound_touchcancel_handler = this.touchcancel_handler.bind(this);
+		mv.bound_drag_handler = this.drag_handler.bind(this);
+
+		mv.bound_touchmove_handler = this.touchmove_handler.bind(this);
+
+		this.addEventListener('click', mv.bound_tap_handler);
+		this.addEventListener('dragstart', mv.bound_dragstart_handler);
+		this.addEventListener('touchstart', mv.bound_touchstart_handler);
+		this.addEventListener('dragend', mv.bound_dragend_handler);
+		this.addEventListener('touchend', mv.bound_touchend_handler);
+		this.addEventListener('drag', mv.bound_drag_handler);
+
+		window.addEventListener('touchmove', mv.bound_touchmove_handler);
+
 	}
 
-	disconnectedCallback(){
+	disconnectedCallback() {
 		const mono = this.mv.monostate;
 		const items = mono.items;
 
 		//log(`disconnectedCallback ${this.id}`);
 		
+
+		window.removeEventListener('touchmove', this.mv.bound_touchmove_handler);
+
+
 		// Setting display to none should make offsetParent return null ;
 		// which will disable updates during our removal of the children here ;
 		this.style.display = 'none';
 		
-		if( this.mv.parent_target ){
+		if (this.mv.parent_target) {
 			//log('removing parent', this.mv.parent_target);
 			this.mv.parent_target = null;
-			const parent = items.get( this.mv.parent_target );
-			if( parent ) parent.children_containers.delete( this );
+			const parent = items.get(this.mv.parent_target);
+			if (parent) parent.children_containers.delete(this);
 		}
 
-		const children = this.$.slot.assignedNodes();
-		for( let target of children.reverse() ){
-			this.remove_listeners( target );
+		const children = this.mv.$slot.assignedNodes();
+		for (let target of children.reverse()) {
+			this.remove_item(target);
 		}
 		
-		super.disconnectedCallback();
+		// super.disconnectedCallback();
 	}
 	
 	// optimized for frequent calls
-	container_moved( ev ){
+	container_moved(ev) {
 		const mono = this.mv.monostate;
 		const items = mono.items;
 
 		//log(`container_moved ${this.id}`);		
 		
 		// Do not move children to animated parents
-		if( this.mv.parent_target ){
-			const parent =  items.get(this.mv.parent_target);
+		if (this.mv.parent_target) {
+			const parent = items.get(this.mv.parent_target);
 			//log(`container ${this.mv.id} has parent ${parent._id}`);
-			if( parent.grabbed ) return;
+			if (parent.grabbed) return;
 			const at_home = parent.X.pos == parent.X.pos_home && parent.Y.pos == parent.Y.pos_home;
-			if( !at_home ) return;
+			if (!at_home) return;
 		}
 		
 		let hurry = false;
 		
-		mono.dirty.add( this );
+		mono.dirty.add(this);
 		
-		const children = this.$.slot.assignedNodes();
-		for( let child of children ){
-			if( child.nodeType !== Node.ELEMENT_NODE ) continue;
-			const item = items.get( child );
-			if( !item ) continue; // may not track all elements
+		const children = this.mv.$slot.assignedNodes();
+		for (let child of children) {
+			if (child.nodeType !== Node.ELEMENT_NODE) continue;
+			const item = items.get(child);
+			if (!item) continue; // may not track all elements
 
-			for( let child_cont of item.children_containers ){
+			for (let child_cont of item.children_containers) {
 				child_cont.container_moved();
 			}
 
-			if( item.container === this ) continue;
-			mono.dirty.add( item.container );
+			if (item.container === this) continue;
+			mono.dirty.add(item.container);
 			hurry = true;
 		}
 
-		if( mono.render_jobs.has('items_moved') ){} // on my way
-		else if( hurry ){
+		if (mono.render_jobs.has('items_moved')) { } // on my way
+		else if (hurry) {
 			//log('hurry', this.mv.id);
-			mono.render_jobs.set('items_moved',setTimeout(MvSorter.items_moved));
+			mono.render_jobs.set('items_moved', setTimeout(MvSorter.items_moved));
 		}
-		else if( mono.dirty.size ){ // soon
+		else if (mono.dirty.size) { // soon
 			MvSorter.debounced_items_moved();
 		}
 	}
 
-	static items_moved(){
+	static items_moved() {
 		const mono = MvSorter._monostate;
 		mono.render_jobs.delete('items_moved');
 		
-		for( let container of mono.dirty ){
+		for (let container of mono.dirty) {
 			//log(`items_moved in ${container.mv.id} ${container.id}`);
 			container.container_rect_changed();
 		}
 
-		for( let container of mono.dirty ){
-			mono.dirty.delete( container );
+		for (let container of mono.dirty) {
+			mono.dirty.delete(container);
 			container.render_items();
 		}
 	}
 
-	render_items(){
+	render_items() {
 		const container = this;
 		const mv = container.mv;
 		const mono = mv.monostate;
 		const items = mono.items;
 		
 		// Skip if container not currently visible
-		if( !this.offsetParent ) return;
+		if (!this.offsetParent) return;
 
 		const ax = this.axisAB();
 		
@@ -233,11 +278,11 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 
 		//log(`${this.mv.id} render_items at (${oA},${oB})`);
 		
-		for( let target of mv.homes ){
+		for (let target of mv.homes) {
 
-			if( !target.parentElement ) continue; // recently removed
+			if (!target.parentElement) continue; // recently removed
 
-			const item = items.get( target );
+			const item = items.get(target);
 
 			const A = item[ax.A];
 			const B = item[ax.B];
@@ -245,7 +290,7 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 			const Y = item.Y;
 			const at_home = A.pos == A.pos_home && B.pos == B.pos_home;
 
-			container.item_rect_changed( target );
+			container.item_rect_changed(target);
 			
 			oA += A.m1;
 
@@ -254,16 +299,16 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 
 			//log(`render ${target.id} ${container.mv.id}.${item.idx} : (${Math.round(X.pos)},${Math.round(Y.pos)}) -> (${X.pos_home},${Y.pos_home})`);
 
-			if( item.grabbed ){}
-			else if( at_home ){
+			if (item.grabbed) { }
+			else if (at_home) {
 				A.pos = A.pos_end = A.pos_home;
 				B.pos = B.pos_end = B.pos_home;
 			} else {
-				item.container.find_dropzone( target );
+				item.container.find_dropzone(target);
 				// anim both since we check pos in animScaleCrash 
-				for( let axis of ['X','Y'] ){
+				for (let axis of ['X', 'Y']) {
 					item[axis].pos_end = item[axis].pos_home;
-					MvSorter.addAnim('pos'+axis, MvSorter.animPosFall(target,axis), target);
+					MvSorter.addAnim('pos' + axis, MvSorter.animPosFall(target, axis), target);
 				}
 			}
 
@@ -277,17 +322,17 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		}
 	}
 
-	add_item( target ){
+	position_item_last(target) {
 		const container = this;
 		const mv = container.mv;
 		const mono = mv.monostate;
 		const items = mono.items;
 		
-		if( mv.homes.length < 2 ) return;
-		
+		if (mv.homes.length < 2) return;
+
 		const ax = this.axisAB();
 		
-		const last = mv.homes[ mv.homes.length - 2 ];
+		const last = mv.homes[mv.homes.length - 2];
 		const l_item = items.get(last);
 
 		const item = items.get(target);
@@ -313,29 +358,29 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		target.style.transform = translate;
 	}
 
-	dir_changed(){
+	dir_changed() {
 		let dir = 'row';
-		if( this.column ) dir = 'column';
-		if( this.row ) dir = 'row';
+		if (this.column) dir = 'column';
+		if (this.row) dir = 'row';
 		this.direction = dir;
 
 		//log(`dir_changed to ${dir}`);
-		this.$.main.style['flex-direction'] = dir;
+		this.mv.$main.style['flex-direction'] = dir;
 	}
 
-	lock_dir_changed(){
+	lock_dir_changed() {
 		//log(`lock_dir_changed to ${this.lock} ${this.direction}`);
-		if( this.lock && this.direction == 'row' ){
+		if (this.lock && this.direction == 'row') {
 			this.mv.axes = ['X'];
-		} else if( this.lock && this.direction == 'column' ){
+		} else if (this.lock && this.direction == 'column') {
 			this.mv.axes = ['Y'];
 		} else {
-			this.mv.axes = ['X','Y'];
+			this.mv.axes = ['X', 'Y'];
 		}
 	}
 
-	axisAB(){
-		if( this.direction == 'row' ){
+	axisAB() {
+		if (this.direction == 'row') {
 			return {
 				A: 'X',
 				B: 'Y',
@@ -348,41 +393,37 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		}
 	}
 
-	static axisB( axis ){
+	static axisB(axis) {
 		return axis == 'X' ? 'Y' : 'X';
 	}
 	
-	nodes_changed( mutations ){
-		//log(this.mv.id, 'nodes_changed', mutations);
-		for( let added of mutations.addedNodes ){
-			this.add_listeners( added );
+	nodes_changed(mutations) {
+		// log(this.mv.id, 'nodes_changed', mutations);
+		for (let added of mutations.addedNodes) {
+			this.add_item(added);
 		}
 
-		for( let removed of mutations.removedNodes ){
-			this.remove_listeners( removed );
+		for (let removed of mutations.removedNodes) {
+			this.remove_item(removed);
 		}
 
 		this.mv.debounced_domchange.call(this);
 	}
 
-	add_listeners( target ){
-		if( target.nodeType !== Node.ELEMENT_NODE ) return;
-		if( target.id == 'dropzone' ) return;
-		if( !target.offsetParent ) return; // element hidden
+	add_item(target) {
+		if (target.nodeType !== Node.ELEMENT_NODE) return;
+		if (target.id == 'dropzone') return;
+		if (!target.offsetParent) return; // element hidden
 
 		const mono = this.mv.monostate;
 		
 		const desig = target.id || target.innerText || target.nodeName;
-		//log(`add_listeners for ${this.mv.id} item ${desig}`);
+		// log(`add_item for ${this.mv.id} item ${desig}`);
 
 		// track state end and up events do not always trigger! There is
 		// a bug in gesture-event-listeners
 
-		addListener(target, 'tap', this.tap_handler.bind(this));
-		addListener(target, 'track', this.track_handler.bind(this));
-
-		addListener(target, 'down', this.down_handler.bind(this));
-		addListener(target, 'up', this.up_handler.bind(this));
+		target.draggable = true;
 
 		const X = {
 			scale: 1,         // multiplier for transform
@@ -409,34 +450,33 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		// Polymer dom-repeat reuses elements. Do not assume that the
 		// logical identity of the item goes unchanged. No id stuff here.
 			
-			const item = {
-				X, Y,
-				grabbed: false,
-				throwed: false,
-				animQueue: new Map(),
-				children_containers: new Set(),
-				idx: idx,
-				container: this,
-				get _id(){ return MvSorter.desig(target) },
-			};
+		const item = {
+			X, Y,
+			grabbed: false,
+			throwed: false,
+			animQueue: new Map(),
+			children_containers: new Set(),
+			idx: idx,
+			container: this,
+			get _id() { return MvSorter.desig(target) },
+		};
 
 		this.mv.homes[idx] = target;
-		mono.items.set( target, item );
+		mono.items.set(target, item);
 		//log('added to items', target);
 		
 
-		this.item_rect_changed( target );
-		this.add_item( target );
+		this.item_rect_changed(target);
+		this.position_item_last(target);
 
-		item.resize_observer = new ResizeObserver(this.container_moved.bind(this));
-		item.resize_observer.observe( target );
+		this.mv.resize_observer.observe(target);
 	}
 
-	item_rect_changed( target ){
+	item_rect_changed(target) {
 		/* Keep last known value if target is not currently visible. */
-		if( !target.offsetParent ) return;
+		if (!target.offsetParent) return;
 
-		const item = this.mv.monostate.items.get( target );
+		const item = this.mv.monostate.items.get(target);
 		const X = item.X;
 		const Y = item.Y;
 		
@@ -460,7 +500,7 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		const X_new = window.scrollX + rect.left;
 		const Y_new = window.scrollY + rect.top;
 
-		const c = getComputedStyle( target );
+		const c = getComputedStyle(target);
 		
 		X.m1 = parseFloat(c.marginLeft);
 		X.m2 = parseFloat(c.marginRight);
@@ -475,11 +515,11 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		Y.offset = Y_new;
 
 		// for DEBUG
-		if( false ){ // X_prev !== X.offset || Y_prev !== Y.offset ){
+		if (false) { // X_prev !== X.offset || Y_prev !== Y.offset ){
 			log(`${this.id} ${MvSorter.desig(target)} (${Math.round(X_prev)},${Math.round(Y_prev)})-> (${Math.round(X_new)},${Math.round(Y_new)}) `);
 		}
 
-		this.handle_rect_changed( target );
+		this.handle_rect_changed(target);
 
 		X.t_origin = X.pos + X.offset_handle + X.mid_handle;
 		Y.t_origin = Y.pos + Y.offset_handle + Y.mid_handle;
@@ -487,16 +527,16 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		//log( item );
 	}
 
-	handle_rect_changed( target ){
+	handle_rect_changed(target) {
 		const mono = this.mv.monostate;
 		const items = mono.items;
-		const item = items.get( target );
-		if( !item ) return;
+		const item = items.get(target);
+		if (!item) return;
 
 		const handle = item.handle;
-		if( !handle ) return;
+		if (!handle) return;
 
-		if( handle == target ){
+		if (handle == target) {
 			item.X.offset_handle = 0;
 			item.Y.offset_handle = 0;
 			item.X.mid_handle = item.X.size / 2;
@@ -504,7 +544,7 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 			return;
 		}
 
-		if( !handle.offsetParent ) return;
+		if (!handle.offsetParent) return;
 
 		//log('offset_handle update');
 
@@ -519,108 +559,132 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		item.Y.mid_handle = rect.height / 2;
 	}
 
-	remove_listeners( node ){
+	remove_item(node) {
 		const mono = this.mv.monostate;
 		const items = mono.items;
-		const item = items.get( node );
+		const item = items.get(node);
 
-		if( !item ) return;
+		if (!item) return;
 
-		//log('remove_listeners disabled'); return;
+		//log('remove_item disabled'); return;
 		
-		removeListener(node, 'tap', this.tap_handler);
-		removeListener(node, 'track', this.track_handler);
-		removeListener(node, 'down', this.down_handler);
-		removeListener(node, 'up', this.up_handler);
-
 		const container = item.container;
-		mono.dirty.add( container );
+		mono.dirty.add(container);
 		
-		if( !Number.isInteger( item.idx ) ){
+		if (!Number.isInteger(item.idx)) {
 			//log(`${item._id} was removed from ${container.id}`);
 		}
 		else {
 			//log(`Removed ${item._id} ${container.id}.${item.idx}`);
-			container.mv.homes.splice( item.idx, 1 );
+			container.mv.homes.splice(item.idx, 1);
 			container.reindex();
 		}
 
-		for( let child_cont of item.children_containers ){
+		for (let child_cont of item.children_containers) {
 			child_cont.mv.parent_target = null;
 		}
 		item.children_containers.clear();
-		
-		items.delete( node );
+
+		this.mv.resize_observer.unobserve(node);
+
+		items.delete(node);
 		
 		//log( 'Removal', this.mv.id, node );
 		MvSorter.debounced_items_moved();
 	}
 
-	item_drag_start( target, ev ){
-		const mono = this.mv.monostate;
-		const item = mono.items.get( target );
-		if( item.grabbed ) return; // already grabbed?
+	dragstart_handler(ev) {
+		ev.dataTransfer.setDragImage(this.mv.$drag_image, 0, 0);
+		this.item_drag_start(ev.target, ev);
+	}
 
-		if( this.disabled ) return;
+	touchstart_handler(ev) {
+		ev.stopPropagation();
+		ev.preventDefault();
+		// log('touchstart', ev);
+		this.item_drag_start(ev.target, ev);
+	}
+
+	item_drag_start(target, ev) {
+		const mono = this.mv.monostate;
+		const item = mono.items.get(target);
+		if (!item) return;
+		if (item.grabbed) return; // already grabbed?
+
+		if (this.disabled) return;
 		
-		//log('item_drag_start', target.id);
+		// log('item_drag_start', target.id);
 
 		/* ev.path might not be standard. Maby use ev.composedPath() */
-		if( this.draghandle && ev.path ){
-			for( let el of ev.path ){
-				if( el.tagName == 'MV-DRAGHANDLE' ){
+		if (this.draghandle && ev.path) {
+			for (let el of ev.path) {
+				if (el.tagName == 'MV-DRAGHANDLE') {
 					item.grabbed = true;
 					item.handle = el;
 					break;
 				}
-				if( el.tagName == 'MV-SORTER' ) break;
+				if (el.tagName == 'MV-SORTER') break;
 			}
 		} else {
 			item.grabbed = true;
 			item.handle = target;
 		}
 
-		if( !item.grabbed ) return; // exit if not grabbed
+		if (!item.grabbed) return; // exit if not grabbed
 		
 		/* TODO: Only do handle_rect_changed when needed */
-		this.item_rect_changed( target );
+		this.item_rect_changed(target);
 
 		item.throwed = false;
 
 
 		// Calculate scale for hovering
-		const size = Math.max( item.X.size, item.Y.size );
+		const size = Math.max(item.X.size, item.Y.size);
 		const add = 0.01 * size + 5;
-		const scale = ( size + add ) / size;
+		const scale = (size + add) / size;
 		
 		MvSorter.addAnim('scale', MvSorter.animScale(target, scale, 200), target);
 		target.classList.add('moved');
 		this.classList.add('moving-child');
 		document.body.classList.add('mv-moving-child');
 		
-		this.$.main.style['user-select'] = 'none';
-		if( window.getSelection ) window.getSelection().removeAllRanges();
+		this.mv.$main.style['user-select'] = 'none';
+		if (window.getSelection) window.getSelection().removeAllRanges();
 
-		if( this.mv.parent_target ){
+		if (this.mv.parent_target) {
 			//log('z-index', 2, this.mv.parent_target.id);
 			this.mv.parent_target.style['z-index'] = 2;
 		}
 		
-		for( let axis of this.mv.axes ){
+		for (let axis of this.mv.axes) {
 			const A = item[axis];
 			A.turned = false;
 			A.crashed = false;
 			A.pos_start = A.pos; // Only defined if axis used
-			MvSorter.addAnim('pos'+axis, MvSorter.animPosDrag(target,axis), target);
+			MvSorter.addAnim('pos' + axis, MvSorter.animPosDrag(target, axis), target);
 		}
 
 	}
 
-	item_drag_end( target ){
-		const item = this.mv.monostate.items.get( target );
-		if( !item.grabbed ) return;
+	dragend_handler(ev) {
+		this.item_drag_end(ev.target);
+	}
 
-		//log(`item_drag_end ${target.id} (${item.X.pos_end},${item.Y.pos_end}) --> (${item.X.pos_home},${item.Y.pos_home}) `);
+	touchend_handler(ev) {
+		ev.stopPropagation();
+		ev.preventDefault();
+		this.item_drag_end(ev.target);
+	}
+
+	touchcancel_handler(ev) {
+		// log('cancel');
+	}
+
+	item_drag_end(target) {
+		const item = this.mv.monostate.items.get(target);
+		if (!item || !item.grabbed) return;
+
+		// log(`item_drag_end ${target.id} (${item.X.pos_end},${item.Y.pos_end}) --> (${item.X.pos_home},${item.Y.pos_home}) `);
 
 		item.throwed = true;
 		item.grabbed = false;
@@ -628,33 +692,33 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		this.classList.remove('moving-child');
 		document.body.classList.remove('mv-moving-child');
 
-		this.$.main.style['user-select'] = '';
+		this.mv.$main.style['user-select'] = '';
 
-		if( this.mv.parent_target ){
+		if (this.mv.parent_target) {
 			//log('z-index', 1, this.mv.parent_target.id);
 			this.mv.parent_target.style['z-index'] = 1;
 		}
 		
-		for( let axis of this.mv.axes ){
+		for (let axis of this.mv.axes) {
 			const axB = MvSorter.axisB(axis);
 			item[axis].pos_end = item[axis].pos_home;
-			MvSorter.addAnim('pos'+axis, MvSorter.animPosFall(target,axis), target);
-			MvSorter.addAnim('rotate'+axB, MvSorter.animRotateRecover(target,axB), target);
+			MvSorter.addAnim('pos' + axis, MvSorter.animPosFall(target, axis), target);
+			MvSorter.addAnim('rotate' + axB, MvSorter.animRotateRecover(target, axB), target);
 		}
 	}
 
-	static item_moved( target ){
+	static item_moved(target) {
 		const mono = MvSorter._monostate;
 		const item = mono.items.get(target);
 		
 		//log(`item_moved ${item._id}`);
 
 		/* Moved away from original home? */
-		if( !item.X.pos_home && !item.Y.pos_home ) return;
+		if (!item.X.pos_home && !item.Y.pos_home) return;
 
 		const cont = item.container;
 
-		const orig = cont.element_origin( target );
+		const orig = cont.element_origin(target);
 
 		const init = {
 			detail: { element: target, item: item, },
@@ -662,17 +726,17 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 			bubbles: true,
 		};
 		
-		if( cont !== orig ){
+		if (cont !== orig) {
 			//log(`Item ${item._id} moved to other container`);
-			orig.dispatchEvent(new CustomEvent('dropoutside', init ));
-		} else {	
+			orig.dispatchEvent(new CustomEvent('dropoutside', init));
+		} else {
 			//log(`Item ${item._id} moved`);
 		}
 
-		cont.dispatchEvent(new CustomEvent('drop', init ));
+		cont.dispatchEvent(new CustomEvent('drop', init));
 	}
 
-	reindex(){
+	reindex() {
 		//log(`reindex ${this.id}`);
 
 		const mono = this.mv.monostate;
@@ -680,10 +744,10 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		const homes = this.mv.homes;
 		const length = homes.length;
 
-		for( let idx=0; idx < length; idx++ ){
+		for (let idx = 0; idx < length; idx++) {
 			const target = homes[idx];
-			const item = items.get( target );
-			if( !item ) continue;
+			const item = items.get(target);
+			if (!item) continue;
 			item.idx = idx;
 			//log(`${item.idx} -> ${idx}`);
 		}
@@ -692,15 +756,15 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 	}
 
 
-	domchange_handler(){
-		//log(`domchange_handler ${this.mv.id} ${this.id}`);
+	domchange_handler() {
+		// log(`domchange_handler ${this.mv.id} ${this.id}`);
 
 		// parent might not exist on creation. Check for availability now
 		const parent = this.offsetParent;
-		if( parent ){
-			if( !this.resize_observer ){
+		if (parent) {
+			if (!this.resize_observer) {
 				this.resize_observer = new ResizeObserver(this.container_moved.bind(this));
-				this.resize_observer.observe( parent );
+				this.resize_observer.observe(parent);
 			}
 			
 			// Discover current parent container
@@ -709,16 +773,16 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 			// Handle visibility changes of elements
 			const mono = this.mv.monostate;
 			const items = mono.items;
-			const children = this.$.slot.assignedNodes();
-			for( let child of children ){
-				if( child.nodeType !== Node.ELEMENT_NODE ) continue;
-				const item = items.get( child );
-				if( item ){
+			const children = this.mv.$slot.assignedNodes();
+			for (let child of children) {
+				if (child.nodeType !== Node.ELEMENT_NODE) continue;
+				const item = items.get(child);
+				if (item) {
 					// TODO: Might want to remove hidden items. But only if
 					// container is visible but child is not. But we might want to
 					// keep items moved to currently hidden containers.
 				} else {
-					this.add_listeners( child );
+					this.add_item(child);
 				}
 			}
 		}
@@ -727,74 +791,74 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		this.container_moved(); // Place new items
 	}
 
-	container_rect_changed(){
+	container_rect_changed() {
 		//log(`container_rect_Changed ${this.mv.id} ${this.id}`);
 		// If recently hidden, keep last known position
-		if( !this.offsetParent ) return;
+		if (!this.offsetParent) return;
 
 		const mv = this.mv;
 		
-		const rect = this.$.main.getBoundingClientRect();
+		const rect = mv.$main.getBoundingClientRect();
 		const sX = window.scrollX;
 		const sY = window.scrollY;
 
 		// Get container padding
-		const c = getComputedStyle( this );		
+		const c = getComputedStyle(this);
 		
 		mv.X = {
 			a: rect.left + sX,
 			b: rect.right + sX,
-			mid: rect.left + sX + ( rect.width / 2 ),
-			p1: parseFloat( c.paddingLeft ),
-			p2: parseFloat( c.paddingRight ),
+			mid: rect.left + sX + (rect.width / 2),
+			p1: parseFloat(c.paddingLeft),
+			p2: parseFloat(c.paddingRight),
 		};
 		
 		mv.Y = {
 			a: rect.top + sY,
 			b: rect.bottom + sY,
-			mid: rect.top + sY + ( rect.height / 2 ),
-			p1: parseFloat( c.paddingTop ),
-			p2: parseFloat( c.paddingBottom ),
+			mid: rect.top + sY + (rect.height / 2),
+			p1: parseFloat(c.paddingTop),
+			p2: parseFloat(c.paddingBottom),
 		};
 
 		const zone = mv.zone;
-		this.item_rect_changed( zone );
+		this.item_rect_changed(zone);
 		
 		//log(`Container ${this.mv.id} ${this.id} (${this.X.a},${this.Y.a}) w ${rect.width} h ${rect.height} ${this.direction}`);
 	}
 
-	container_update_parent(){
+	container_update_parent() {
 		const mono = this.mv.monostate;
 		const items = mono.items;
 		const cont = this;
 
 		//log('container_update_parent', cont.id);
-		const parent_target = find_parent( cont, cont );
+		const parent_target = find_parent(cont, cont);
 		
 		const prev = this.mv.parent_target;
-		if( parent_target ){
+		if (parent_target) {
 			//log('container_update_parent', cont.id, '-->', parent_item._id);
-			if( prev == parent_target ) return; // no change
+			if (prev == parent_target) return; // no change
 
 			this.mv.parent_target = parent_target;
-			items.get(parent_target).children_containers.add( this );
+			items.get(parent_target).children_containers.add(this);
 		}
 
-		if( prev ) prev.children_containers.delete( this ); // unless no change		
+		if (prev) prev.children_containers.delete(this); // unless no change		
 		
 		
-		function find_parent( el ){
+		function find_parent(el) {
 			const parent = el.parentNode || el.host;
-			if( !parent ){
+			if (!parent) {
 				//log('no parent');
 				return null;
 			}
 
 			//log('check', parent);
-			const item = items.get( parent );
-			if( item ) return parent;
+			const item = items.get(parent);
+			if (item) return parent;
 			
-			return find_parent( parent );
+			return find_parent(parent);
 		}
 	}
 	
@@ -803,35 +867,35 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 	 * containers if items in this container has been moved to/from other
 	 * container.
 	 */
-	commit(){
+	commit() {
 		
 	}
 
 	/**
 	 * Returns an array of elements currently placed in this container.
 	 */
-	elements(){
+	elements() {
 		return this.mv.homes.slice(0);
 	}
 
 	/*
 	 * Returns an array of elements moved from this container.
 	 */
-	elements_removed(){
+	elements_removed() {
 		const mono = this.mv.monostate;
 		const items = mono.items;
 
 		const list = [];
 
-		const children = this.$.slot.assignedNodes();
-		for( let child of children ){
-			if( child.nodeType !== Node.ELEMENT_NODE ) continue;
-			const item = items.get( child );
-			if( !item ) continue; // may not track all elements
+		const children = this.mv.$slot.assignedNodes();
+		for (let child of children) {
+			if (child.nodeType !== Node.ELEMENT_NODE) continue;
+			const item = items.get(child);
+			if (!item) continue; // may not track all elements
 
-			if( item.container === this ) continue;
+			if (item.container === this) continue;
 
-			list.push( child );
+			list.push(child);
 		}
 
 		return list;
@@ -841,12 +905,12 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 	 * Returns the original container this element belongs to, before
 	 * reordering.
 	 */
-	element_origin( target ){
+	element_origin(target) {
 		const mono = this.mv.monostate;
 		const items = mono.items;
-		const item = items.get( target );
+		const item = items.get(target);
 
-		if( !item ) return null;
+		if (!item) return null;
 		return target.parentElement;
 	}
 
@@ -854,12 +918,12 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 	 * Returns the current container this element belongs to,
 	 *	acknowledging reordering.
 	 */
-	element_home( target ){
+	element_home(target) {
 		const mono = this.mv.monostate;
 		const items = mono.items;
-		const item = items.get( target );
+		const item = items.get(target);
 
-		if( !item ) return null;
+		if (!item) return null;
 		return item.container;
 	}
 
@@ -867,34 +931,34 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 	 * Restores the containers items to the default position,
 	 * returning and giving back elements from other containers.
 	 */
-	reset(){
+	reset() {
 		const seen = new Set();
 		const mono = this.mv.monostate;
 		const items = mono.items;
 
 		const homes_new = [];
-		const children = this.$.slot.assignedNodes();
-		for( let target of children ){
-			if( seen.has( target ) ) continue;
-			seen.add( target );
+		const children = this.mv.$slot.assignedNodes();
+		for (let target of children) {
+			if (seen.has(target)) continue;
+			seen.add(target);
 
-			const item = items.get( target );
+			const item = items.get(target);
 			// TODO: re-evaluate element for tracking
-			if( !item ) continue; // may not track all elements
+			if (!item) continue; // may not track all elements
 			
 			const old_container = item.container;
 			const old_idx = item.idx;
 			
-			mono.dirty.add( old_container );
+			mono.dirty.add(old_container);
 
 			const idx = homes_new.length; // next idx
 			item.idx = idx;
 			item.container = this; // FIXME: move things in old container
-			homes_new[ idx ] = target;
+			homes_new[idx] = target;
 
-			if( old_container !== this ){
+			if (old_container !== this) {
 				//log(`deleting ${old_container.id}.${old_idx}`);
-				old_container.mv.homes.splice( old_idx, 1 );
+				old_container.mv.homes.splice(old_idx, 1);
 				old_container.reindex();
 			}
 			
@@ -902,13 +966,13 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 			//log(`${desig} ${old_container.id}.${old_idx} -> ${this.id}.${idx}`);
 		}
 
-		for( let target of this.mv.homes ){
-			if( seen.has( target ) ) continue;
-			seen.add( target );
+		for (let target of this.mv.homes) {
+			if (seen.has(target)) continue;
+			seen.add(target);
 
-			const item = items.get( target );
+			const item = items.get(target);
 			// TODO: re-evaluate element for tracking
-			if( !item ) continue; // may not track all elements
+			if (!item) continue; // may not track all elements
 
 			const desig = target.id || target.innerText || target.nodeName;
 			const orig_container = target.parentElement;
@@ -916,21 +980,21 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 			const old_container = item.container; // should always be 'this'
 			const old_idx = item.idx;
 
-			if( !orig_container ){
+			if (!orig_container) {
 				// target could have been recently removed
 				//log(`${desig} ${old_container.id}.${old_idx} -> removed`);
-				old_container.mv.homes.splice( old_idx, 1 );
+				old_container.mv.homes.splice(old_idx, 1);
 				// no need to reindex. homes_new set after this
 				item.idx = null;
 				continue;
 			}
 			
-			mono.dirty.add( orig_container );
+			mono.dirty.add(orig_container);
 			
 			const idx = orig_container.mv.homes.length;
 			item.idx = idx;
 			item.container = orig_container;
-			orig_container.mv.homes[ idx ] = target;
+			orig_container.mv.homes[idx] = target;
 
 			//log(`${desig} ${old_container.id}.${old_idx} -> ${orig_container.id}.${idx}`);
 		}
@@ -941,10 +1005,10 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 	}
 
 
-	add_dropzone(){
+	add_dropzone() {
 		const mv = this.mv;
 		const mono = mv.monostate;
-		if( mv.zone ) return;
+		if (mv.zone) return;
 
 		const X = {
 			scale: 1,       // multiplier for transform
@@ -971,90 +1035,132 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 
 		const zone = document.createElement('div');
 		zone.id = 'dropzone';
-		this.shadowRoot.insertBefore(zone,this.$.main);
+		this.shadowRoot.insertBefore(zone, mv.$main);
 		//log(zone.offsetLeft, zone.offsetTop );
 		mv.zone = zone;
-		mono.items.set( zone, zoneD );
+		mono.items.set(zone, zoneD);
 		
 		
-		//const el = this.$.dropzone;
+		//const el = mv.$dropzone;
 		//this.dz_offsetLeft = el.offsetLeft;
 		//this.dz_offsetTop = el.offsetTop;
 	}
 
-	tap_handler( ev ){
-		// log('tap');
+	find_item(node) {
+		const items = this.mv.monostate.items;
+		while (true) {
+			// log('consider', node);
+			if (!node) return null;
+			if (items.has(node)) return node;
+			if (node === this) return null;
+			node = node.parent;
+		}
 	}
 
-	track_handler( ev ){
-		if( this.disabled ) return;
+	tap_handler(ev) {
+		const target = this.find_item(ev.target);
+		if (!target) return;
+		log('tap', target);
+	}
+
+	track_handler(ev) {
+		if (this.disabled) return;
 		ev.stopPropagation();
 		const track = ev.detail;
 		const target = ev.currentTarget;
-		if( track.state == 'track' ) return this.track_move(  track, target );
-		if( track.state == 'start' ) return this.item_drag_start( target, ev );
-		if( track.state == 'end'   ) return this.item_drag_end( target );
+		if (track.state == 'track') return this.track_move(track, target);
+		if (track.state == 'start') return this.item_drag_start(target, ev);
+		if (track.state == 'end') return this.item_drag_end(target);
 	}
 
-	down_handler( ev ){
+	down_handler(ev) {
 		ev.stopPropagation();
-		this.item_drag_start( ev.currentTarget, ev );
+		this.item_drag_start(ev.currentTarget, ev);
 	}
 
-	up_handler( ev ){ // Not always triggerd! Bug in gesture-event-listeners.
+	up_handler(ev) { // Not always triggerd! Bug in gesture-event-listeners.
 		ev.stopPropagation();
-		this.item_drag_end( ev.currentTarget );
+		this.item_drag_end(ev.currentTarget);
 	}
 
-	track_move( track, target ){
-		const item = this.mv.monostate.items.get( target );
-		if( !item.grabbed ) return;
+	drag_handler(ev) {
+		// log('drag', ev);
+		return this.track_move({
+			x: ev.clientX,
+			y: ev.clientY,
+		}, ev.target);
+	}
 
-		if( typeof item.X.pos_start !== 'undefined' ){
+	touchmove_handler(ev) {
+		if (ev.touches[1]) {
+			// log("multitouch");
+			return;
+		}
+		const touches = ev.touches[0];
+		const target = this.find_item(touches.target);
+		// log('moved', target);
+
+		ev.stopPropagation();
+		return this.track_move({
+			x: touches.clientX,
+			y: touches.clientY,
+		}, target);
+		
+	}
+
+	track_move(track, target) {
+		const item = this.mv.monostate.items.get(target);
+		if (!item || !item.grabbed) {
+			if (!target) return;
+			log("target", target);
+			return;
+		}
+
+		if (typeof item.X.pos_start !== 'undefined') {
 			item.X.pos_end = track.x
-										 + window.scrollX
-										 - item.X.offset
-										 - item.X.offset_handle
-										 - item.X.mid_handle;
+				+ window.scrollX
+				- item.X.offset
+				- item.X.offset_handle
+				- item.X.mid_handle;
 		}
 
-		if( typeof item.Y.pos_start !== 'undefined' ){
+		if (typeof item.Y.pos_start !== 'undefined') {
 			item.Y.pos_end = track.y
-										 + window.scrollY
-										 - item.Y.offset
-										 - item.Y.offset_handle
-										 - item.Y.mid_handle;
+				+ window.scrollY
+				- item.Y.offset
+				- item.Y.offset_handle
+				- item.Y.mid_handle;
 		}
 
-		//log(`(${item.X.pos_end},${item.Y.pos_end}})`);
-		//MvSorter.throttled_move(track, target); // for DEBUG
+		// log(`(${item.X.pos_end},${item.Y.pos_end}})`);
+		// MvSorter.throttled_move(track, target); // for DEBUG
 	}
 
-	static throttled_move_handler( track, target ){
-		const item = MvSorter._monostate.items.get( target );
+	static throttled_move_handler(track, target) {
+		const item = MvSorter._monostate.items.get(target);
 		const X = item.X;
 		const Y = item.Y;
 		log(`move ${target.id} track+scroll (${Math.round(track.x + window.scrollX)},${Math.round(track.y + window.scrollY)}) target offset (${Math.round(X.offset)},${Math.round(Y.offset)}) handle offset (${Math.round(X.offset_handle)},${Math.round(Y.offset_handle)})`);
 		//log(`move ${target.id} (${Math.round(X.pos+X.offset+X.size/2)},${Math.round(Y.pos+Y.offset+Y.size/2)}) (${Math.round(X.t_origin+X.offset)},${Math.round(Y.t_origin+Y.offset)})`);
 	}
 
-	find_container( target ){
+	find_container(target) {
 		const mono = this.mv.monostate;
 		const items = mono.items;
-		const item = items.get( target );
+		const item = items.get(target);
 		const group = target.parentElement.group;
 
 		const grace = 10; // For edge cases
 		
 		// Only drop in same container if no container group specified
-		if( !group ) return this;
+		if (!group) return this;
 
 		const midG = {};
 
-		for( let axis of ['X','Y'] ){
-			midG[axis] = Math.floor( item[axis].pos
-														 + item[axis].pos_mid
-														 + item[axis].offset );
+		for (let axis of ['X', 'Y']) {
+			midG[axis] = Math.floor(item[axis].pos
+				+ item[axis].pos_mid
+				+ item[axis].offset);
 		}
 
 		//log(`find_dropzone for ${target.parentElement.id} ${MvSorter.desig(target)} (${midG.X},${midG.Y}) ()`);
@@ -1064,15 +1170,15 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		const cc = new Set(); // closest container
 		//const dists = []; // DEBUG
 		
-		for( let container of mono.containers ){
+		for (let container of mono.containers) {
 			
 			//log('check', container.id);
 
 			// Check if container is currently visible
-			if( !container.offsetParent ) continue;
+			if (!container.offsetParent) continue;
 
 			// Check that the target is allowed in container
-			if( ! container.allows_target( target ) ) continue;
+			if (!container.allows_target(target)) continue;
 			
 			let dist = Infinity;
 			const X = container.mv.X;
@@ -1082,75 +1188,64 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 			
 			let dir; // DEBUG: direction
 			
-			if( X.a > midG.X )
-				{
-					if( Y.a > midG.Y )
-						{
-							dir = 'SE';
-							const dX = X.a - midG.X;
-							const dY = Y.a - midG.Y;
-							dist = Math.sqrt( dX*dX + dY*dY );
-						}
-					else if( Y.b < midG.Y )
-						{
-							dir = 'NE';
-							const dX = X.a - midG.X;
-							const dY = midG.Y - Y.b;
-							dist = Math.sqrt( dX*dX + dY*dY );
-						}
-					else
-						{
-							dir = 'E';
-							dist = X.a - midG.X;
-						}
+			if (X.a > midG.X) {
+				if (Y.a > midG.Y) {
+					dir = 'SE';
+					const dX = X.a - midG.X;
+					const dY = Y.a - midG.Y;
+					dist = Math.sqrt(dX * dX + dY * dY);
 				}
-			else if( X.b < midG.X )
-				{
-					if( Y.a > midG.Y )
-						{
-							dir = 'SW';
-							const dX = midG.X - X.b;
-							const dY = Y.a - midG.Y;
-							dist = Math.sqrt( dX*dX + dY*dY );
-						}
-					else if( Y.b < midG.Y )
-						{
-							dir = 'NW';
-							const dX = midG.X - X.b;
-							const dY = midG.Y - Y.b;
-							dist = Math.sqrt( dX*dX + dY*dY );
-						}
-					else
-						{
-							dir = 'W';
-							dist = midG.X - X.b;
-						}
+				else if (Y.b < midG.Y) {
+					dir = 'NE';
+					const dX = X.a - midG.X;
+					const dY = midG.Y - Y.b;
+					dist = Math.sqrt(dX * dX + dY * dY);
 				}
-			else if( Y.a > midG.Y )
-				{
-					dir = 'S';
-					dist = Y.a - midG.Y;
+				else {
+					dir = 'E';
+					dist = X.a - midG.X;
 				}
-			else if( Y.b < midG.Y )
-				{
-					dir = 'N';
-					dist = midG.Y - Y.b;
+			}
+			else if (X.b < midG.X) {
+				if (Y.a > midG.Y) {
+					dir = 'SW';
+					const dX = midG.X - X.b;
+					const dY = Y.a - midG.Y;
+					dist = Math.sqrt(dX * dX + dY * dY);
 				}
-			else
-				{
-					dir = 'C';
-					dist = 0;
+				else if (Y.b < midG.Y) {
+					dir = 'NW';
+					const dX = midG.X - X.b;
+					const dY = midG.Y - Y.b;
+					dist = Math.sqrt(dX * dX + dY * dY);
 				}
+				else {
+					dir = 'W';
+					dist = midG.X - X.b;
+				}
+			}
+			else if (Y.a > midG.Y) {
+				dir = 'S';
+				dist = Y.a - midG.Y;
+			}
+			else if (Y.b < midG.Y) {
+				dir = 'N';
+				dist = midG.Y - Y.b;
+			}
+			else {
+				dir = 'C';
+				dist = 0;
+			}
 			
 			//dists[container.mv.id] = `${dir} ${dist}`;
 			//log(`Item ${target.id} -> ${container.mv.id} ${dir} ${dist}`);
 			
-			if( dist < closest ){
+			if (dist < closest) {
 				closest = dist;
 				cc.clear();
 			}
 
-			if( dist <= closest + grace ) cc.add( container );
+			if (dist <= closest + grace) cc.add(container);
 
 			//log('dist', container.id, dist);
 		}
@@ -1158,9 +1253,9 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		// Considering nested containers
 		let deepest = 0;
 		let found = null;
-		for( let c of cc ){
+		for (let c of cc) {
 			const depth = c.nesting_depth();
-			if( depth >= deepest ){
+			if (depth >= deepest) {
 				found = c;
 				deepest = depth;
 			}
@@ -1170,12 +1265,12 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		return found;
 	}
 
-	find_dropzone( target ){
+	find_dropzone(target) {
 		const mono = this.mv.monostate;
 		const items = mono.items;
-		const item = items.get( target );
+		const item = items.get(target);
 
-		const cc = this.find_container( target );
+		const cc = this.find_container(target);
 		const mv = cc.mv;
 
 		//log(`Item ${target.id} -> ${cc.id}`);
@@ -1184,7 +1279,7 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 
 
 		const mid = {};
-		for( let axis of ['X','Y'] ){
+		for (let axis of ['X', 'Y']) {
 			mid[axis] = item[axis].pos + item[axis].pos_mid + item[axis].offset;
 		}
 
@@ -1198,7 +1293,7 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		const axA = ax.A;
 		const midA = mid[axA];
 		
-		if( item.container === cc ){
+		if (item.container === cc) {
 
 			idxH = item.idx;
 			midH = item[axA].pos_home + item[axA].pos_mid + item[axA].offset;
@@ -1217,58 +1312,58 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		//log(`${item._id} with home ${midH} now at ${mid[axA]}`);
 		
 		let idx;
-		if( midA < midH ){
+		if (midA < midH) {
 			let oA = midH + item[axA].pos_mid;
-			for( let i=idxH; i>=0; i-- ){
+			for (let i = idxH; i >= 0; i--) {
 				//const child_item = items.get( children[i] );
 				//const ci_width = child_item ? child_item.width : item.width;
 
-				const ci = items.get( children[i] );
+				const ci = items.get(children[i]);
 				const ci_size = ci ? ci[axA].m_size : item[axA].m_size;
 				
 				let size = ci_size;
-				if( item[axA].m_size < size ) size = item[axA].m_size;
+				if (item[axA].m_size < size) size = item[axA].m_size;
 				//log(`${i} ${ci ? ci._id : 'dropzone'} Before ${oA} + ${size}`);
 				oA -= ci_size;
-				if( midA < oA + size ){
+				if (midA < oA + size) {
 					idx = i;
 				} else break;
 			}
-		} else if( midA > midH ){
+		} else if (midA > midH) {
 			idx = 0;
 
 			//let oX = cc.mv.X.offset;
 			let oA = mv[axA].a + mv[axA].p1;; //add first margin?
 			
-			for( let i=0; i < slot_count; i++ ){
+			for (let i = 0; i < slot_count; i++) {
 				// TODO: FIXME:  add first margin left?
 
 				//const child_item = items.get( children[i] );
 				//const ci_width = child_item ? child_item.width : item.width;
 
-				const ci = items.get( children[i] );
-				const ci_size = ci ? ci[axA].m_size : item[axA].m_size; 
+				const ci = items.get(children[i]);
+				const ci_size = ci ? ci[axA].m_size : item[axA].m_size;
 
 				let size = ci_size;
-				if( item[axA].m_size < size ) size = item[axA].m_size;
+				if (item[axA].m_size < size) size = item[axA].m_size;
 				//log(`${i} ${ci ? ci._id : 'dropzone'} After ${oA} - ${size}`);
 				oA += ci_size;
-				if( midA > oA - size ){
+				if (midA > oA - size) {
 					idx = i;
 				} else break;
 				
 			}
 		}
 
-		if( idx !== undefined ) cc.assign_dropzone( target, idx );
+		if (idx !== undefined) cc.assign_dropzone(target, idx);
 	}
 
-	assign_dropzone( s_target, idxIn ){
+	assign_dropzone(s_target, idxIn) {
 		const mv = this.mv;
 		const mono = mv.monostate;
 		const items = mono.items;
 		const zone = mv.zone;
-		const zoneD = items.get( zone );
+		const zoneD = items.get(zone);
 
 		//log(`Item ${s_target.parentElement.id} ${MvSorter.desig(s_target)} -> ${this.id}.${idxIn}`);
 
@@ -1280,7 +1375,7 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		const zone_idx = zoneD.idx = idxIn;
 		const zone_cont = zoneD.container = this; // TODO: use the containers zone
 
-		const s_item = items.get( s_target );
+		const s_item = items.get(s_target);
 
 		s_item.container.mv.zone.style.opacity = 0;
 		zone.style.opacity = 1;
@@ -1294,7 +1389,7 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 
 
 		// TODO: pass in data instead of using scoped varables
-		function setZone(){
+		function setZone() {
 			const ax = container.axisAB();
 			s_item.idx = idx;
 			homesNew[idx] = s_target;
@@ -1317,11 +1412,11 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 			dz_style.transform = `translate(${offset.X}px,${offset.Y}px) `;
 			
 			oA += s_item[ax.A].size + s_item[ax.A].m2;
-			idx ++;					
+			idx++;
 		}
 		
-		for( container of containers ){
-			if( !container.offsetParent ) continue; // currently hidden
+		for (container of containers) {
+			if (!container.offsetParent) continue; // currently hidden
 			
 			const mv = container.mv;
 			const ax = container.axisAB();
@@ -1332,18 +1427,18 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 
 			//log(`${container.id} (${oA},${oB})`);
 			
-			for( let target of mv.homes ){
+			for (let target of mv.homes) {
 				//if( !target ) log( mv.homes ); // DEBUG
 
-				if( zone_idx == idx && zone_cont == container ) setZone();
-				const item = items.get( target );
+				if (zone_idx == idx && zone_cont == container) setZone();
+				const item = items.get(target);
 
 				const X = item.X;
 				const Y = item.Y;
 				const A = item[ax.A];
 				const B = item[ax.B];
 				
-				if( target == s_target ){
+				if (target == s_target) {
 					//log(`Skipping ${target.id} ${item.container.mv.id}.${item.idx} (${X.pos_home},${Y.pos_home})`);
 					//log( zone_idx, idx, zone_cont.id, container.id );
 					continue;
@@ -1361,23 +1456,23 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 				const desig = target.id || target.innerText;
 				//log(`${desig} ${container.mv.id}.${idx} : (${X.pos_end},${Y.pos_end}) -> (${X.pos_home},${Y.pos_home})`);
 
-				if( !item.grabbed ){
-					if( X.pos_end !== X.pos_home ){
+				if (!item.grabbed) {
+					if (X.pos_end !== X.pos_home) {
 						X.pos_end = X.pos_home;
-						MvSorter.addAnim('posX', MvSorter.animPosFall(target,'X'), target);
+						MvSorter.addAnim('posX', MvSorter.animPosFall(target, 'X'), target);
 					}
 					
-					if( Y.pos_end !== Y.pos_home ){
+					if (Y.pos_end !== Y.pos_home) {
 						Y.pos_end = Y.pos_home;
-						MvSorter.addAnim('posY', MvSorter.animPosFall(target,'Y'), target);
+						MvSorter.addAnim('posY', MvSorter.animPosFall(target, 'Y'), target);
 					}
 				}
 
 				oA += A.size + A.m2;
-				idx ++;
+				idx++;
 			}
 
-			if( zone_idx >= homesNew.length  && zone_cont == container ) setZone();
+			if (zone_idx >= homesNew.length && zone_cont == container) setZone();
 			
 			mv.homes = homesNew;
 			//log( homesNew );
@@ -1385,75 +1480,75 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 
 	}
 	
-	allows_target( target ){
+	allows_target(target) {
 		// Might be extended to consider the current situation for each item;
 
 		//log('allows_target', this.id, MvSorter.desig(target));
 		
 		// Defaults to only check for matching group;
-		if( this.group !== target.parentElement.group ) return false;
+		if (this.group !== target.parentElement.group) return false;
 
 		// Sanity check for not dropping element inside itself;
-		if( this.has_parent( target ) ) return false;
+		if (this.has_parent(target)) return false;
 
 		//log('allows_target', 'yes');
 		
 		return true;
 	}
 
-	has_parent( target ){
+	has_parent(target) {
 		const parent = this.mv.parent_target;
-		if( !parent ) return false;
+		if (!parent) return false;
 
-		if( parent == target ) return true;
+		if (parent == target) return true;
 
-		const item = this.mv.monostate.items.get( parent );
-		if( !item ) return false;
+		const item = this.mv.monostate.items.get(parent);
+		if (!item) return false;
 		
-		return item.container.has_parent( target );
+		return item.container.has_parent(target);
 	}
 
-	nesting_depth( depth){
-		if( !depth ) depth = 0;
+	nesting_depth(depth) {
+		if (!depth) depth = 0;
 		const parent = this.mv.parent_target;
-		if( !parent ) return depth;
+		if (!parent) return depth;
 
-		const item = this.mv.monostate.items.get( parent );
-		if( !item ) return depth;
+		const item = this.mv.monostate.items.get(parent);
+		if (!item) return depth;
 
-		return item.container.nesting_depth( depth + 1 );
+		return item.container.nesting_depth(depth + 1);
 	}
 	
-	static addAnim( slot, fn, target ){
+	static addAnim(slot, fn, target) {
 		//console.warn(`${target.id} addAnim ${slot}`);
 		const mono = MvSorter._monostate;
-		const item = mono.items.get( target );
-		item.animQueue.set( slot, fn );
+		const item = mono.items.get(target);
+		item.animQueue.set(slot, fn);
 		
-		mono.animQueue.add( target );
-		if( !mono.animLoop ) MvSorter.startAnim();
+		mono.animQueue.add(target);
+		if (!mono.animLoop) MvSorter.startAnim();
 	}
 
-	static startAnim(){
+	static startAnim() {
 		//log("Starting anim");
 		const mono = MvSorter._monostate;
 		
 		const perspective = "perspective(500px) ";
 
 		let lastFrame = performance.now();
-		mono.animLoop = function( now ){
+		mono.animLoop = function (now) {
 			//log('drawing');
 			const delta = now - lastFrame;
-			for( let target of mono.animQueue.values() ){
+			for (let target of mono.animQueue.values()) {
 				const item = mono.items.get(target);
-				if( !item ){
+				if (!item) {
 					mono.animQueue.delete(target);
 					continue;
 				}
 				
-				for( let [slot, fn] of item.animQueue ){
+				for (let [slot, fn] of item.animQueue) {
 					//log(`Anim ${target.id} ${slot}`);
-					if( !fn(now,delta ) ) item.animQueue.delete(slot);
+					if (!fn(now, delta)) item.animQueue.delete(slot);
 				}
 
 				const translate = `translate(${item.X.pos}px, ${item.Y.pos}px) `;
@@ -1465,67 +1560,67 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 
 				//log( target.style['transform-origin'] );
 				
-				if(!item.animQueue.size ) mono.animQueue.delete(target);
+				if (!item.animQueue.size) mono.animQueue.delete(target);
 			}
 			lastFrame = now;
-			if(!mono.animQueue.size ) MvSorter.stopAnim();
-			else requestAnimationFrame( mono.animLoop );
+			if (!mono.animQueue.size) MvSorter.stopAnim();
+			else requestAnimationFrame(mono.animLoop);
 
 			//MvSorter.throttled_anim(); // for DEBUG
 		}
-		mono.animLoop( lastFrame );
+		mono.animLoop(lastFrame);
 	}
 
-	static stopAnim(){
+	static stopAnim() {
 		//log("Stopping anim");
 
 		// Only when all animations finished
 		const mono = MvSorter._monostate;
 		delete mono.animLoop;
 
-		for( let container of mono.containers ){
+		for (let container of mono.containers) {
 			const zone = container.mv.zone;
-			if( zone ){
+			if (zone) {
 				zone.style.opacity = 0;
 			}
 		}
 	}
 
-	static throttled_anim_handler(){
+	static throttled_anim_handler() {
 		log(`animation running`);
 		const mono = MvSorter._monostate;
-		for( let target of mono.animQueue.values() ){
+		for (let target of mono.animQueue.values()) {
 			const item = mono.items.get(target);
-			if( !item ){
+			if (!item) {
 				mono.animQueue.delete(target);
 				continue;
 			}
 			
-			for( let slot of item.animQueue.keys() ){
+			for (let slot of item.animQueue.keys()) {
 				log(` * ${item.container.mv.id} ${target.id} ${slot}`);
 			}
 		}
 		//log( mono.animQueue );
 	}
 
-	static animScale( target, scale_end, duration ){
+	static animScale(target, scale_end, duration) {
 		const mono = MvSorter._monostate;
-		const item = mono.items.get( target );
+		const item = mono.items.get(target);
 		const start = performance.now();
 		const scale_start = item.X.scale;
 		const scale_delta = scale_end - scale_start;
-		if(!duration) duration = 300;
+		if (!duration) duration = 300;
 		const end = start + duration;
 		
-		return function( now, delta ){
-			if( now > end ) now = end;
-			const pos = ( now - start ) / duration;
-			const scale = ( scale_delta * pos ) + scale_start;
+		return function (now, delta) {
+			if (now > end) now = end;
+			const pos = (now - start) / duration;
+			const scale = (scale_delta * pos) + scale_start;
 
 			let z = 1;
-			if( scale > 1 ) z++;
-			if( item.grabbed ) z++;
-			if( target.style['z-index'] != z ){ // typecasting
+			if (scale > 1) z++;
+			if (item.grabbed) z++;
+			if (target.style['z-index'] != z) { // typecasting
 				//log('z-index', z, target.id, scale, item.grabbed);
 				target.style['z-index'] = z;
 			}
@@ -1534,14 +1629,14 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 			
 			item.X.scale = item.Y.scale = scale;
 			
-			if( now == end ) return false;
+			if (now == end) return false;
 			return true;
 		};
 	}
 
-	static animPosDrag( target, axis ){
+	static animPosDrag(target, axis) {
 		const mono = MvSorter._monostate;
-		const item = mono.items.get( target );
+		const item = mono.items.get(target);
 		const A = item[axis];
 		const axB = MvSorter.axisB(axis);
 		const B = item[axB];
@@ -1555,7 +1650,7 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		let slowUpdateLast = performance.now();
 		//log("add drag", target, item.posX);
 		
-		return function( now, delta ){
+		return function (now, delta) {
 			const pos_now = A.pos;
 			const pos_end = A.pos_end;
 			const pos_delta = pos_end - pos_now;
@@ -1565,9 +1660,9 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 			pos_speed *= friction ** pos_acc;
 			
 			const dir = axis == 'X' ? 1 : -1;
-			B.rotate = dir * Math.atan(pos_delta / pointer_distance );
-			if( B.rotate > rot_max ) B.rotate = rot_max;
-			else if( B.rotate < -rot_max ) B.rotate = - rot_max;
+			B.rotate = dir * Math.atan(pos_delta / pointer_distance);
+			if (B.rotate > rot_max) B.rotate = rot_max;
+			else if (B.rotate < -rot_max) B.rotate = - rot_max;
 
 			//log('rotate', axis, B.rotate );
 			A.t_origin = A.pos + A.offset_handle + A.mid_handle;
@@ -1575,11 +1670,11 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 			//log( axis, A.pos_speed, pos_delta, A.pos_end );
 			
 			A.pos_speed = pos_speed;
-			A.pos = pos_now + pos_speed * delta/16;
+			A.pos = pos_now + pos_speed * delta / 16;
 
-			if( slowUpdateLast + slowUpdateStep < now ){
-				if( Math.abs( last_zonecheck - A.pos ) >= 1 ){
-					item.container.find_dropzone( target );
+			if (slowUpdateLast + slowUpdateStep < now) {
+				if (Math.abs(last_zonecheck - A.pos) >= 1) {
+					item.container.find_dropzone(target);
 					last_zonecheck = A.pos;
 				}
 				slowUpdateLast = now;
@@ -1590,21 +1685,21 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 	}
 
 
-	static animRotateRecover( target, axis ){
+	static animRotateRecover(target, axis) {
 		const mono = MvSorter._monostate;
-		const item = mono.items.get( target );
+		const item = mono.items.get(target);
 		const A = item[axis];
 		const recoup = 0.9;
 
-		return function( now, delta ){
+		return function (now, delta) {
 			A.rotate *= recoup;
 			//log('rotate recover', axis, A.rotate);
 
-			if( item.grabbed ){
+			if (item.grabbed) {
 				return false;
 			}
 
-			if( A.rotate < 0.01 ){
+			if (A.rotate < 0.01) {
 				A.rotate = 0;
 				return false;
 			}
@@ -1615,9 +1710,9 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 	}
 
 
-	static animPosFall( target, axis ){
+	static animPosFall(target, axis) {
 		const mono = MvSorter._monostate;
-		const item = mono.items.get( target );
+		const item = mono.items.get(target);
 		const A = item[axis];
 		const B = item[MvSorter.axisB(axis)];
 		const pos_acc = .8;
@@ -1626,7 +1721,7 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		const midAirSlow = 2;
 		const flyby_speed = 20;
 		
-		return function( now, delta ){
+		return function (now, delta) {
 			const pos_now = A.pos;
 			const pos_end = A.pos_end;
 			const pos_delta = pos_end - pos_now;
@@ -1636,10 +1731,10 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 
 			//log( 'fall', axis, target.id, pos_delta, pos_speed );
 			
-			if( pos_delta ) pos_speed +=  pos_acc * dir;
+			if (pos_delta) pos_speed += pos_acc * dir;
 
 			// apply friction if we are going in the wrong direction
-			if( dir * pos_speed < 0 ){
+			if (dir * pos_speed < 0) {
 				pos_speed *= friction;
 			}
 
@@ -1650,44 +1745,44 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 			//}
 
 			// find closest target at the point of turning
-			if( item.throwed ){
-				if( Math.abs( pos_speed ) < midAirSlow ){
-					if( !A.turned ){
+			if (item.throwed) {
+				if (Math.abs(pos_speed) < midAirSlow) {
+					if (!A.turned) {
 						//log(`Turning ${target.id} ${axis} (${A.pos}) speed ${pos_speed}` );
 						
-						item.container.find_dropzone( target );
+						item.container.find_dropzone(target);
 						
 						// anim both since we check pos in animScaleCrash 
-						for( let axis of ['X','Y'] ){
+						for (let axis of ['X', 'Y']) {
 							item[axis].pos_end = item[axis].pos_home;
-							MvSorter.addAnim('pos'+axis, MvSorter.animPosFall(target,axis), target);
+							MvSorter.addAnim('pos' + axis, MvSorter.animPosFall(target, axis), target);
 						}
 						
 						A.turned = true;
 					}
-				} else if( A.turned ){
+				} else if (A.turned) {
 					//log(`Turning ${target.id} ${axis} - RESET ${pos_speed}` );
 					//A.turned = false;
 				}
 			}
 			
-			const pos = pos_now + pos_speed * delta/16;
+			const pos = pos_now + pos_speed * delta / 16;
 
 			A.pos_speed = pos_speed;
 
-			if(
+			if (
 				dir * (pos_delta - pos_speed) <= 0 &&
-				Math.abs( B.pos - B.pos_end ) < B.size/2 &&
+				Math.abs(B.pos - B.pos_end) < B.size / 2 &&
 				Math.abs(pos_speed) < flyby_speed
-			){
+			) {
 				//log(`${target.id} ${item.container.mv.id}.${item.idx} THUMP ${axis} (${Math.floor(item.X.pos)},${Math.floor(item.Y.pos)}) -> (${Math.floor(item.X.pos_end)},${Math.floor(item.Y.pos_end)}) ${pos_speed}`);
 				A.pos = pos_end;
-				MvSorter.addAnim('scale'+axis, MvSorter.animScaleCrash(target,axis), target );
+				MvSorter.addAnim('scale' + axis, MvSorter.animScaleCrash(target, axis), target);
 
-				if( A.scale !== 1 )
+				if (A.scale !== 1)
 					MvSorter.addAnim('scale', MvSorter.animScale(target, 1, 75), target);
 
-				if( item.throwed ){
+				if (item.throwed) {
 					target.classList.remove('moved');
 				}
 
@@ -1701,7 +1796,7 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		}
 	}
 
-	static animScaleCrash( target, axis ){
+	static animScaleCrash(target, axis) {
 		const mono = MvSorter._monostate;
 		const item = mono.items.get(target);
 		const A = item[axis];
@@ -1710,23 +1805,23 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		//const duration = 20;
 		const pos_acc = .8;
 		
-		return function( now, delta ){
+		return function (now, delta) {
 			let speed = A.pos_speed || 0;
 			//const pos_acc = delta / duration;
-			const speedAbs =  Math.abs( speed ) * pos_acc ;
-			const dir = A.scale_dir || (speed < 0 ? -1 : 1 );
-			const force = delta/16 * pos_acc * recoup * (A.scale_force || 0) + speedAbs;
+			const speedAbs = Math.abs(speed) * pos_acc;
+			const dir = A.scale_dir || (speed < 0 ? -1 : 1);
+			const force = delta / 16 * pos_acc * recoup * (A.scale_force || 0) + speedAbs;
 
 			A.crashed = true;
 			
 			const at_home = item.X.pos == item.X.pos_home && item.Y.pos == item.Y.pos_home;
 			
-			const compr = A.size / (A.size + force );
+			const compr = A.size / (A.size + force);
 
 			//log(`Crash ${axis} ${item.throwed} ${at_home} ${compr} ${force} (${Math.floor(item.X.pos)},${Math.floor(item.Y.pos)}) ${A.pos_speed}`);
 			
 
-			if( speedAbs < 1 && force < 1 ){
+			if (speedAbs < 1 && force < 1) {
 				A.pos_speed = 0;
 				A.scale_force = 0;
 				A.scale = 1;
@@ -1735,16 +1830,16 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 				//log('item settled', item._id);
 				
 				// Update children containers
-				for( let child_cont of item.children_containers ){
+				for (let child_cont of item.children_containers) {
 					child_cont.container_moved();
 				}
 
 				
 				// RESET
-				if( item.throwed && at_home ){
+				if (item.throwed && at_home) {
 
 					/* TODO: restore original z-index */
-					if( item.container.mv.parent_target ){
+					if (item.container.mv.parent_target) {
 						//log('z-index', 0, item.container.mv.parent_target.id);
 						item.container.mv.parent_target.style['z-index'] = 0;
 					}
@@ -1753,7 +1848,7 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 					item.Y.crashed = false;
 					item.throwed = false;
 
-					MvSorter.item_moved( target );
+					MvSorter.item_moved(target);
 				}
 
 				return false;
@@ -1766,9 +1861,9 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 			A.scale_dir = dir;
 			A.scale = compr;
 
-			if( dir < 0 ){
+			if (dir < 0) {
 				A.t_origin = A.pos + 0;
-			} else if( dir > 0 ){
+			} else if (dir > 0) {
 				A.t_origin = A.pos + A.size;
 			}
 			
@@ -1780,10 +1875,10 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		}
 	}
 
-	static desig( target ){
-		if( target.id ) return target.id;
-		if( target.firstChild ){
-			if( target.firstChild.textContent ){
+	static desig(target) {
+		if (target.id) return target.id;
+		if (target.firstChild) {
+			if (target.firstChild.textContent) {
 				return target.firstChild.textContent;
 			}
 		}
@@ -1793,8 +1888,7 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 	// from http://jsfiddle.net/justin_c_rounds/Gd2S2/light/
 	static checkLineIntersection(
 		line1StartX, line1StartY, line1EndX, line1EndY,
-		line2StartX, line2StartY, line2EndX, line2EndY )
-	{
+		line2StartX, line2StartY, line2EndX, line2EndY) {
 		// if the lines intersect, the result contains the x and y of
 		// the intersection (treating the lines as infinite) and booleans
 		// for whether line segment 1 or line segment 2 contain the point
@@ -1830,25 +1924,101 @@ class MvSorter extends GestureEventListeners(PolymerElement) {
 		// if we cast these lines infinitely in both directions, they
 		// intersect here:
 
-				result.x = line1StartX + (a * (line1EndX - line1StartX));
+		result.x = line1StartX + (a * (line1EndX - line1StartX));
 		result.y = line1StartY + (a * (line1EndY - line1StartY));
 
 		// if line1 is a segment and line2 is infinite, they intersect if:
-							 if (a > 0 && a < 1) {
-								 result.onLine1 = true;
-							 }
+		if (a > 0 && a < 1) {
+			result.onLine1 = true;
+		}
 
 		// if line2 is a segment and line1 is infinite, they intersect if:
-							 if (b > 0 && b < 1) {
-								 result.onLine2 = true;
-							 }
+		if (b > 0 && b < 1) {
+			result.onLine2 = true;
+		}
 
 		// if line1 and line2 are segments, they intersect if both of the
 		// above are true
 		return result;
 	}
 
+	register_attributes() {
+		const properties = MvSorter.properties;
+		const mv = this.mv;
+		const _prop = mv._prop = {};
+
+		for (const prop in properties) {
+			// log("setup", prop);
+			const config = properties[prop];
+
+			if (this.hasAttribute(prop)) {
+				_prop[prop] = this.get_attribute(config.type, prop);
+			} else{
+				_prop[prop] = this[prop];
+				this.set_attribute(config.type, prop, _prop[prop]);
+			}
+
+			Object.defineProperty(this, prop, {
+				get() { return _prop[prop] },
+				set(value) {
+					if (_prop[prop] === value) return;
+					const val_old = _prop[prop];
+					_prop[prop] = value;
+					this.set_attribute(config.type, prop, value);
+					if (config.observer) this[config.observer](prop, val_old);
+				},
+			});
+		}
+
+		const attributeObserver = new MutationObserver((mutationsList) => {
+			for (const mutation of mutationsList) {
+				if (mutation.type !== 'attributes') continue;
+				const prop = mutation.attributeName;
+				const config = properties[prop];
+				if (!config) return;
+				_prop[prop] = this.get_attribute(config.type, prop);
+				if (config.observer) this[config.observer](undefined);
+			}
+		});
+		attributeObserver.observe(this, { attributes: true });
+
+		// log('props', this);
+	}
+
+	properties_reactions() { 
+		const properties = MvSorter.properties;
+		const _prop = this.mv._prop;
+
+		for (const prop in properties) {
+			if (_prop[prop] == null) continue;
+			const config = properties[prop];
+			if (config.observer) this[config.observer](prop, undefined);
+		}
+	}
+
+	set_attribute(type, prop, value) {
+		if (value == null) return this.removeAttribute(prop);
+		if (type === Boolean) {
+			if (!value) return this.removeAttribute(prop);
+			return this.setAttribute(prop, "");
+		}
+		return this.setAttribute(prop, value);
+	}
+
+	get_attribute(type, prop) {
+		if (type === Boolean) {
+			if (this.hasAttribute(prop)) return true;
+			return false;
+		}
+		return this.getAttribute(prop);
+	}
+
+	$$( selector ){
+    return this.shadowRoot?.querySelector( selector );
+  }
+
 }
 
 customElements.define(MvSorter.is, MvSorter);
 export default MvSorter;
+

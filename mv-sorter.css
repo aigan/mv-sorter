@@ -14,7 +14,7 @@ mv-sorter:not([disabled]) mv-draghandle {
 	cursor: move;
 }
 
-mv-sorter:not([draghandle]):not([disabled]) {
+mv-sorter:not([draghandle]):not([disabled]) [draggable=true] {
 	cursor: move;
 }
 
