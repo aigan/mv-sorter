@@ -1,11 +1,11 @@
 
-const log = console.log.bind(console);
-// function log(...logargs) {
-// 	console.log(...logargs);
-// 	const $log = document.getElementById('log');
-// 	if (!$log) return;
-// 	$log.insertAdjacentText('beforeend', logargs.join(" ")+"\n");
-// }
+// const log = console.log.bind(console);
+function log(...logargs) {
+	console.log(...logargs);
+	const $log = document.getElementById('log');
+	if (!$log) return;
+	$log.insertAdjacentText('beforeend', logargs.join(" ")+"\n");
+}
 
 function debounce(callback, time) {
 	let timeout;
@@ -684,7 +684,7 @@ class MvSorter extends HTMLElement {
 		const item = this.mv.monostate.items.get(target);
 		if (!item || !item.grabbed) return;
 
-		// log(`item_drag_end ${target.id} (${item.X.pos_end},${item.Y.pos_end}) --> (${item.X.pos_home},${item.Y.pos_home}) `);
+		// log(`item_drag_end ${item._id} (${item.X.pos_end},${item.Y.pos_end}) --> (${item.X.pos_home},${item.Y.pos_home}) `);
 
 		item.throwed = true;
 		item.grabbed = false;
@@ -698,10 +698,22 @@ class MvSorter extends HTMLElement {
 			//log('z-index', 1, this.mv.parent_target.id);
 			this.mv.parent_target.style['z-index'] = 1;
 		}
-		
+
+		// Boost throw, from 1 to 4 times
+		const speed2 = (item.X.pos_speed * item.X.pos_speed + item.Y.pos_speed * item.Y.pos_speed) / 20;
+		let boost = 1;
+		if (speed2 < 1) boost = 4 ** speed2;
+		else boost = (3 + speed2) / speed2;
+
+		// log("drop speed", item._id, speed2, boost);
+
 		for (let axis of this.mv.axes) {
 			const axB = MvSorter.axisB(axis);
 			item[axis].pos_end = item[axis].pos_home;
+
+			// Boost throw
+			item[axis].pos_speed *= boost;
+
 			MvSorter.addAnim('pos' + axis, MvSorter.animPosFall(target, axis), target);
 			MvSorter.addAnim('rotate' + axB, MvSorter.animRotateRecover(target, axB), target);
 		}
@@ -711,7 +723,10 @@ class MvSorter extends HTMLElement {
 		const mono = MvSorter._monostate;
 		const item = mono.items.get(target);
 		
-		//log(`item_moved ${item._id}`);
+		// log(`item_moved ${item._id}`);
+
+		//# Workaround for possible race conditions.
+		item.container.assign_dropzone(target, item.idx);
 
 		/* Moved away from original home? */
 		if (!item.X.pos_home && !item.Y.pos_home) return;
@@ -762,10 +777,7 @@ class MvSorter extends HTMLElement {
 		// parent might not exist on creation. Check for availability now
 		const parent = this.offsetParent;
 		if (parent) {
-			if (!this.resize_observer) {
-				this.resize_observer = new ResizeObserver(this.container_moved.bind(this));
-				this.resize_observer.observe(parent);
-			}
+			this.mv.resize_observer.observe(parent);
 			
 			// Discover current parent container
 			this.container_update_parent();
@@ -1060,17 +1072,7 @@ class MvSorter extends HTMLElement {
 	tap_handler(ev) {
 		const target = this.find_item(ev.target);
 		if (!target) return;
-		log('tap', target);
-	}
-
-	track_handler(ev) {
-		if (this.disabled) return;
-		ev.stopPropagation();
-		const track = ev.detail;
-		const target = ev.currentTarget;
-		if (track.state == 'track') return this.track_move(track, target);
-		if (track.state == 'start') return this.item_drag_start(target, ev);
-		if (track.state == 'end') return this.item_drag_end(target);
+		// log('tap', target);
 	}
 
 	down_handler(ev) {
@@ -1273,7 +1275,7 @@ class MvSorter extends HTMLElement {
 		const cc = this.find_container(target);
 		const mv = cc.mv;
 
-		//log(`Item ${target.id} -> ${cc.id}`);
+		// log(`Item ${item._id} -> ${cc.id}`);
 		//log(`Item ${target.id}`, dists, cc.id);
 		//log( item );
 
@@ -1283,8 +1285,6 @@ class MvSorter extends HTMLElement {
 			mid[axis] = item[axis].pos + item[axis].pos_mid + item[axis].offset;
 		}
 
-
-		
 		let midH, idxH;
 		const children = cc.mv.homes;
 		let slot_count = children.length + 1;
@@ -1365,7 +1365,7 @@ class MvSorter extends HTMLElement {
 		const zone = mv.zone;
 		const zoneD = items.get(zone);
 
-		//log(`Item ${s_target.parentElement.id} ${MvSorter.desig(s_target)} -> ${this.id}.${idxIn}`);
+		// log(`Item ${s_target.parentElement.id} ${MvSorter.desig(s_target)} -> ${this.id}.${idxIn}`);
 
 		//## _prev not usable since we have multiple ongoing things
 		const zone_idx_prev = zoneD.idx;
@@ -1381,7 +1381,7 @@ class MvSorter extends HTMLElement {
 		zone.style.opacity = 1;
 		
 		//if( (s_item.container !== zone_cont) || (s_item.idx !== zone_idx ) ){
-		//	log(`setZone ${s_target.id} ${s_item.container.mv.id}.${s_item.idx} -> ${zone_cont.mv.id}.${zone_idx}`);
+		//	log(`§ ${s_target.id} ${s_item.container.mv.id}.${s_item.idx} -> ${zone_cont.mv.id}.${zone_idx}`);
 		//}
 		
 		const containers = mono.containers;
@@ -1393,14 +1393,15 @@ class MvSorter extends HTMLElement {
 			const ax = container.axisAB();
 			s_item.idx = idx;
 			homesNew[idx] = s_target;
-			s_item.container = container; // TODO: CHECKME
+			s_item.container = container; // Assigned in for loop
 
 			oA += s_item[ax.A].m1;
 			
 			s_item[ax.A].pos_home = Math.round(oA - s_item[ax.A].offset);
 			s_item[ax.B].pos_home = Math.round(oB + s_item[ax.B].m1 - s_item[ax.B].offset);
 
-			//log(`setZone ${MvSorter.desig(s_target)} ${s_item.container.id}.${s_item.idx} (${s_item.X.pos_home},${s_item.Y.pos_home})`);
+			// log(`setZone ${MvSorter.desig(s_target)} ${s_item.container.id}.${s_item.idx} (${s_item.X.pos_home},${s_item.Y.pos_home})`);
+			// log(`setZone ${s_item._id} ${s_item.container.id}.${s_item.idx}`);
 			//log( s_item, s_item.X.offset, s_item.Y.offset );
 			
 			const dz_style = zone.style;
@@ -1454,7 +1455,7 @@ class MvSorter extends HTMLElement {
 				B.pos_home = Math.round(oB + B.m1 - B.offset);
 
 				const desig = target.id || target.innerText;
-				//log(`${desig} ${container.mv.id}.${idx} : (${X.pos_end},${Y.pos_end}) -> (${X.pos_home},${Y.pos_home})`);
+				// log(`place ${desig} ${container.mv.id}.${idx} : (${X.pos_end},${Y.pos_end}) -> (${X.pos_home},${Y.pos_home})`);
 
 				if (!item.grabbed) {
 					if (X.pos_end !== X.pos_home) {
@@ -1667,7 +1668,6 @@ class MvSorter extends HTMLElement {
 			//log('rotate', axis, B.rotate );
 			A.t_origin = A.pos + A.offset_handle + A.mid_handle;
 			
-			//log( axis, A.pos_speed, pos_delta, A.pos_end );
 			
 			A.pos_speed = pos_speed;
 			A.pos = pos_now + pos_speed * delta / 16;
@@ -1729,7 +1729,7 @@ class MvSorter extends HTMLElement {
 			let pos_speed = A.pos_speed || 0;
 			const dir = pos_now > pos_end ? -1 : 1;
 
-			//log( 'fall', axis, target.id, pos_delta, pos_speed );
+			// log( 'fall', target.id, axis, pos_now, delta, pos_delta, pos_speed );
 			
 			if (pos_delta) pos_speed += pos_acc * dir;
 
@@ -1818,7 +1818,7 @@ class MvSorter extends HTMLElement {
 			
 			const compr = A.size / (A.size + force);
 
-			//log(`Crash ${axis} ${item.throwed} ${at_home} ${compr} ${force} (${Math.floor(item.X.pos)},${Math.floor(item.Y.pos)}) ${A.pos_speed}`);
+			// log(`Crash ${axis} ${item.throwed} ${at_home} ${compr} ${force} (${Math.floor(item.X.pos)},${Math.floor(item.Y.pos)}) ${A.pos_speed}`);
 			
 
 			if (speedAbs < 1 && force < 1) {
@@ -1827,7 +1827,7 @@ class MvSorter extends HTMLElement {
 				A.scale = 1;
 				delete A.scale_dir;
 
-				//log('item settled', item._id);
+				// log('item settled', item._id, axis, at_home, item.throwed);
 				
 				// Update children containers
 				for (let child_cont of item.children_containers) {
@@ -1843,6 +1843,8 @@ class MvSorter extends HTMLElement {
 						//log('z-index', 0, item.container.mv.parent_target.id);
 						item.container.mv.parent_target.style['z-index'] = 0;
 					}
+
+					// log('item settled', item._id, 'reset');
 
 					item.X.crashed = false;
 					item.Y.crashed = false;
