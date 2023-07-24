@@ -160,7 +160,8 @@ class MvSorter extends HTMLElement {
 		mv.bound_touchcancel_handler = this.touchcancel_handler.bind(this);
 		mv.bound_drag_handler = this.drag_handler.bind(this);
 
-		mv.bound_touchmove_handler = this.touchmove_handler.bind(this);
+		const mono = mv.monostate;
+		// mono.bound_touchmove_handler = this.touchmove_handler.bind(this);
 
 		this.addEventListener('click', mv.bound_tap_handler);
 		this.addEventListener('dragstart', mv.bound_dragstart_handler);
@@ -169,7 +170,7 @@ class MvSorter extends HTMLElement {
 		this.addEventListener('touchend', mv.bound_touchend_handler);
 		this.addEventListener('drag', mv.bound_drag_handler);
 
-		window.addEventListener('touchmove', mv.bound_touchmove_handler);
+		window.addEventListener('touchmove', MvSorter.touchmove_handler);
 
 	}
 
@@ -180,7 +181,7 @@ class MvSorter extends HTMLElement {
 		//log(`disconnectedCallback ${this.id}`);
 		
 
-		window.removeEventListener('touchmove', this.mv.bound_touchmove_handler);
+		window.removeEventListener('touchmove', MvSorter.touchmove_handler);
 
 
 		// Setting display to none should make offsetParent return null ;
@@ -594,44 +595,44 @@ class MvSorter extends HTMLElement {
 	}
 
 	dragstart_handler(ev) {
+		// ev.stopPropagation();
+		// ev.preventDefault();
 		ev.dataTransfer.setDragImage(this.mv.$drag_image, 0, 0);
-		this.item_drag_start(ev.target, ev);
+		// log('drag start', ev, ev.target, this.find_target(ev.target));
+	
+		let handle;
+		if (this.draghandle) {
+			handle = ev.target.querySelector("MV-DRAGHANDLE");
+		}
+	
+		this.item_drag_start(ev.target, handle);
 	}
 
 	touchstart_handler(ev) {
 		ev.stopPropagation();
 		ev.preventDefault();
-		// log('touchstart', ev);
-		this.item_drag_start(ev.target, ev);
+
+		// log('touchstart', ev, ev.target, this.find_target(ev.target));
+		this.item_drag_start(this.find_target(ev.target), ev.target);
 	}
 
-	item_drag_start(target, ev) {
+	item_drag_start(target, handle) {
 		const mono = this.mv.monostate;
 		const item = mono.items.get(target);
-		if (!item) return;
-		if (item.grabbed) return; // already grabbed?
 
+		// log('item_drag_start', target, item, handle );
+
+		if (!item) return;
+
+		if (item.grabbed) return; // already grabbed?
 		if (this.disabled) return;
 		
-		// log('item_drag_start', target.id);
+		item.handle = handle ?? target;
+		item.grabbed = true;
 
-		/* ev.path might not be standard. Maby use ev.composedPath() */
-		if (this.draghandle && ev.path) {
-			for (let el of ev.path) {
-				if (el.tagName == 'MV-DRAGHANDLE') {
-					item.grabbed = true;
-					item.handle = el;
-					break;
-				}
-				if (el.tagName == 'MV-SORTER') break;
-			}
-		} else {
-			item.grabbed = true;
-			item.handle = target;
-		}
+		// log('item_drag_start', item._id, target);
+		mono.last_grabbed = target;
 
-		if (!item.grabbed) return; // exit if not grabbed
-		
 		/* TODO: Only do handle_rect_changed when needed */
 		this.item_rect_changed(target);
 
@@ -673,7 +674,9 @@ class MvSorter extends HTMLElement {
 	touchend_handler(ev) {
 		ev.stopPropagation();
 		ev.preventDefault();
-		this.item_drag_end(ev.target);
+
+		// log("touchend", ev.target);
+		this.item_drag_end(this.find_target(ev.target));
 	}
 
 	touchcancel_handler(ev) {
@@ -1058,31 +1061,21 @@ class MvSorter extends HTMLElement {
 		//this.dz_offsetTop = el.offsetTop;
 	}
 
-	find_item(node) {
+	find_target(node) {
 		const items = this.mv.monostate.items;
 		while (true) {
 			// log('consider', node);
 			if (!node) return null;
 			if (items.has(node)) return node;
 			if (node === this) return null;
-			node = node.parent;
+			node = node.parentElement;
 		}
 	}
 
 	tap_handler(ev) {
-		const target = this.find_item(ev.target);
+		const target = this.find_target(ev.target);
 		if (!target) return;
 		// log('tap', target);
-	}
-
-	down_handler(ev) {
-		ev.stopPropagation();
-		this.item_drag_start(ev.currentTarget, ev);
-	}
-
-	up_handler(ev) { // Not always triggerd! Bug in gesture-event-listeners.
-		ev.stopPropagation();
-		this.item_drag_end(ev.currentTarget);
 	}
 
 	drag_handler(ev) {
@@ -1093,17 +1086,23 @@ class MvSorter extends HTMLElement {
 		}, ev.target);
 	}
 
-	touchmove_handler(ev) {
+	static touchmove_handler(ev) {
 		if (ev.touches[1]) {
-			// log("multitouch");
+			log("multitouch");
 			return;
 		}
 		const touches = ev.touches[0];
-		const target = this.find_item(touches.target);
-		// log('moved', target);
+
+		// const ontop = this.shadowRoot.elementFromPoint(touches.clientX, touches.clientY);
+		// const target = this.find_target(touches.target);
+		const mono = MvSorter._monostate;
+		const target = mono.last_grabbed;
+		if (!target) return;
+		const item = mono.items.get(target);
+		// log('touchmove_handler moved', target);
 
 		ev.stopPropagation();
-		return this.track_move({
+		return item.container.track_move({
 			x: touches.clientX,
 			y: touches.clientY,
 		}, target);
@@ -1114,7 +1113,7 @@ class MvSorter extends HTMLElement {
 		const item = this.mv.monostate.items.get(target);
 		if (!item || !item.grabbed) {
 			if (!target) return;
-			log("target", target);
+			// log("target", target);
 			return;
 		}
 
