@@ -1,21 +1,10 @@
 
-// const log = console.log.bind(console);
-function log(...logargs) {
+const log = console.log.bind(console);
+function xlog(...logargs) {
 	console.log(...logargs);
 	const $log = document.getElementById('log');
 	if (!$log) return;
 	$log.insertAdjacentText('beforeend', logargs.join(" ")+"\n");
-}
-
-function debounce(callback, time) {
-	let timeout;
-	return function () {
-		if (timeout) clearTimeout(timeout);
-		timeout = setTimeout( ()=>{
-			timeout = null;
-			callback.apply(this, arguments);
-		}, time);
-	}
 }
 
 class MvSorter extends HTMLElement {
@@ -38,9 +27,186 @@ class MvSorter extends HTMLElement {
 		group: {
 			type: String,
 		},
+		autosave: {
+			type: Boolean,
+		},
 		disabled: {
 			type: Boolean,
 		},
+	}
+
+	/*
+	 * Commits all items in current container, affecting other
+	 * containers if items in this container has been moved to/from other
+	 * container.
+	 */
+	commit() {
+		if (!this.is_altered) return;
+		this.replaceChildren(... this.elements());
+		// log("Saved", this.mv.id);
+	}
+
+	/**
+	 * Returns an array of elements currently placed in this container.
+	 */
+	elements() {
+		return this.mv.homes.slice(0);
+	}
+
+	/**
+	 * Is true if container has unsaved (not commited) changes
+	 */
+	get is_altered() {
+		const homes = this.mv.homes;
+		const children = this.children; 
+		if (homes.length !== children.length) return true;
+		for (let i = 0; i < homes.length; i++ ) { 
+			if (homes[i] !== children[i]) return true;
+		}
+		return false;
+	}
+
+	/*
+	 * Returns an array of elements moved from this container.
+	 */
+	elements_removed() {
+		const mono = this.mv.monostate;
+		const items = mono.items;
+
+		const list = [];
+
+		const children = this.mv.$slot.assignedNodes();
+		for (let child of children) {
+			if (child.nodeType !== Node.ELEMENT_NODE) continue;
+			const item = items.get(child);
+			if (!item) continue; // may not track all elements
+
+			if (item.container === this) continue;
+
+			list.push(child);
+		}
+
+		return list;
+	}
+
+	/*
+	 * Returns an array of elements moved to this container.
+	 */
+	elements_added() {
+		const mono = this.mv.monostate;
+		const items = mono.items;
+
+		const list = [];
+
+		const children = this.mv.$slot.assignedNodes();
+		for (const el of this.mv.homes) {
+			if( !children.includes(el) ) list.push(el);
+		}
+		return list;
+	}
+
+	/**
+	 * Returns the original container this element belongs to, before
+	 * reordering.
+	 */
+	element_origin(target) {
+		const mono = this.mv.monostate;
+		const items = mono.items;
+		const item = items.get(target);
+
+		if (!item) return null;
+		return target.parentElement;
+	}
+
+	/**
+	 * Returns the current container this element belongs to,
+	 *	acknowledging reordering.
+	 */
+	element_home(target) {
+		const mono = this.mv.monostate;
+		const items = mono.items;
+		const item = items.get(target);
+
+		if (!item) return null;
+		return item.container;
+	}
+
+	/**
+	 * Restores the containers items to the default position,
+	 * returning and giving back elements from other containers.
+	 */
+	reset() {
+		const seen = new Set();
+		const mono = this.mv.monostate;
+		const items = mono.items;
+		// TODO: animate
+
+		const homes_new = [];
+		const children = this.mv.$slot.assignedNodes();
+		for (let target of children) {
+			if (seen.has(target)) continue;
+			seen.add(target);
+
+			const item = items.get(target);
+			// TODO: re-evaluate element for tracking
+			if (!item) continue; // may not track all elements
+			
+			const old_container = item.container;
+			const old_idx = item.idx;
+			
+			mono.dirty.add(old_container);
+
+			const idx = homes_new.length; // next idx
+			item.idx = idx;
+			item.container = this; // FIXME: move things in old container
+			homes_new[idx] = target;
+
+			if (old_container !== this) {
+				//log(`deleting ${old_container.id}.${old_idx}`);
+				old_container.mv.homes.splice(old_idx, 1);
+				old_container.reindex();
+			}
+			
+			// const desig = target.id || target.innerText || target.nodeName;
+			//log(`${desig} ${old_container.id}.${old_idx} -> ${this.id}.${idx}`);
+		}
+
+		for (let target of this.mv.homes) {
+			if (seen.has(target)) continue;
+			seen.add(target);
+
+			const item = items.get(target);
+			// TODO: re-evaluate element for tracking
+			if (!item) continue; // may not track all elements
+
+			// const desig = target.id || target.innerText || target.nodeName;
+			const orig_container = target.parentElement;
+
+			const old_container = item.container; // should always be 'this'
+			const old_idx = item.idx;
+
+			if (!orig_container) {
+				// target could have been recently removed
+				//log(`${desig} ${old_container.id}.${old_idx} -> removed`);
+				old_container.mv.homes.splice(old_idx, 1);
+				// no need to reindex. homes_new set after this
+				item.idx = null;
+				continue;
+			}
+			
+			mono.dirty.add(orig_container);
+			
+			const idx = orig_container.mv.homes.length;
+			item.idx = idx;
+			item.container = orig_container;
+			orig_container.mv.homes[idx] = target;
+
+			//log(`${desig} ${old_container.id}.${old_idx} -> ${orig_container.id}.${idx}`);
+		}
+
+		this.mv.homes = homes_new;
+
+		MvSorter.items_moved();
 	}
 
 	static get template() {
@@ -130,9 +296,8 @@ class MvSorter extends HTMLElement {
 		
 		mv.debounced_domchange = debounce(this.domchange_handler.bind(this), 100);
 		mv.mutation_observer = new MutationObserver(this.nodes_changed.bind(this));
-		mv.mutation_observer.observe($main, { childList: true });
-
-		$main.addEventListener('dom-change', mv.debounced_domchange);
+		mv.mutation_observer.observe(this, { childList: true });
+		this.addEventListener('dom-change', mv.debounced_domchange);
 
 		const io = new IntersectionObserver(mv.debounced_domchange);
 		io.observe(this);
@@ -205,7 +370,7 @@ class MvSorter extends HTMLElement {
 		const mono = this.mv.monostate;
 		const items = mono.items;
 
-		//log(`container_moved ${this.id}`);		
+		// log(`container_moved ${this.id}`);		
 		
 		// Do not move children to animated parents
 		if (this.mv.parent_target) {
@@ -247,10 +412,11 @@ class MvSorter extends HTMLElement {
 
 	static items_moved() {
 		const mono = MvSorter._monostate;
+		// log('items moved');
 		mono.render_jobs.delete('items_moved');
 		
 		for (let container of mono.dirty) {
-			//log(`items_moved in ${container.mv.id} ${container.id}`);
+			// log(`items_moved in ${container.mv.id} ${container.id}`);
 			container.container_rect_changed();
 		}
 
@@ -274,7 +440,7 @@ class MvSorter extends HTMLElement {
 		let oA = mv[ax.A].a + mv[ax.A].p1;
 		let oB = mv[ax.B].a + mv[ax.B].p1;
 
-		//log(`${this.mv.id} render_items at (${oA},${oB})`);
+		// log(`${this.mv.id} render_items at (${oA},${oB})`);
 		
 		for (let target of mv.homes) {
 
@@ -360,7 +526,7 @@ class MvSorter extends HTMLElement {
 		let dir = 'row';
 		if (this.column) dir = 'column';
 		if (this.row) dir = 'row';
-		this.direction = dir;
+		this.mv.direction = dir;
 
 		//log(`dir_changed to ${dir}`);
 		this.mv.$main.style['flex-direction'] = dir;
@@ -368,9 +534,9 @@ class MvSorter extends HTMLElement {
 
 	lock_dir_changed() {
 		//log(`lock_dir_changed to ${this.lock} ${this.direction}`);
-		if (this.lock && this.direction == 'row') {
+		if (this.lock && this.mv.direction == 'row') {
 			this.mv.axes = ['X'];
-		} else if (this.lock && this.direction == 'column') {
+		} else if (this.lock && this.mv.direction == 'column') {
 			this.mv.axes = ['Y'];
 		} else {
 			this.mv.axes = ['X', 'Y'];
@@ -378,7 +544,7 @@ class MvSorter extends HTMLElement {
 	}
 
 	axisAB() {
-		if (this.direction == 'row') {
+		if (this.mv.direction == 'row') {
 			return {
 				A: 'X',
 				B: 'Y',
@@ -396,14 +562,41 @@ class MvSorter extends HTMLElement {
 	}
 	
 	nodes_changed(mutations) {
-		// log(this.mv.id, 'nodes_changed', mutations);
-		for (let added of mutations.addedNodes) {
-			this.add_item(added);
+		const mono = this.mv.monostate;
+	
+		// log("Container", this.mv.id, 'nodes_changed');
+
+		// mono.dirty.add(this);
+		// return MvSorter.items_moved();
+
+		const removed = new Set();
+
+		for (const mutation of mutations) {
+			for ( const $el of mutation.removedNodes) {
+				removed.add($el);
+			}
 		}
 
-		for (let removed of mutations.removedNodes) {
-			this.remove_item(removed);
+		for (const $el of this.children) { 
+			removed.delete($el);
 		}
+
+		for (const $el of removed) {
+			const item = mono.items.get($el);
+			if (!item) continue;
+			mono.dirty.add(item.container);
+			// log("removed", item._id, item.container);
+		}
+
+		for (const cont of mono.dirty) { 
+			if (cont === this) continue;
+			// log("sub-commit", cont.mv.id);
+			cont.commit();
+		}
+
+		mono.dirty.add(this);
+
+		MvSorter.items_moved();
 
 		this.mv.debounced_domchange.call(this);
 	}
@@ -414,19 +607,16 @@ class MvSorter extends HTMLElement {
 		if (!target.offsetParent) return; // element hidden
 
 		const mono = this.mv.monostate;
+		if (mono.items.has(target)) return;
 		
-		const desig = target.id || target.innerText || target.nodeName;
+		// const desig = target.id || target.innerText || target.nodeName;
 		// log(`add_item for ${this.mv.id} item ${desig}`);
 
 		// track state end and up events do not always trigger! There is
 		// a bug in gesture-event-listeners
 
-		const $handle = target.querySelector("MV-DRAGHANDLE");
-		if ($handle) {
-			$handle.draggable = true;
-		} else {
-			target.draggable = true;
-		}
+		const $handle = target.querySelector("MV-DRAGHANDLE") || target;
+		$handle.draggable = true;
 
 		const X = {
 			scale: 1,         // multiplier for transform
@@ -729,7 +919,7 @@ class MvSorter extends HTMLElement {
 		const mono = MvSorter._monostate;
 		const item = mono.items.get(target);
 		
-		// log(`item_moved ${item._id}`);
+		log(`item_moved ${item._id}`);
 
 		//# Workaround for possible race conditions.
 		item.container.assign_dropzone(target, item.idx);
@@ -755,6 +945,8 @@ class MvSorter extends HTMLElement {
 		}
 
 		cont.dispatchEvent(new CustomEvent('drop', init));
+
+		if (cont.autosave) cont.commit();
 	}
 
 	reindex() {
@@ -791,9 +983,8 @@ class MvSorter extends HTMLElement {
 			// Handle visibility changes of elements
 			const mono = this.mv.monostate;
 			const items = mono.items;
-			const children = this.mv.$slot.assignedNodes();
+			const children = this.mv.$slot.assignedElements();
 			for (let child of children) {
-				if (child.nodeType !== Node.ELEMENT_NODE) continue;
 				const item = items.get(child);
 				if (item) {
 					// TODO: Might want to remove hidden items. But only if
@@ -842,7 +1033,7 @@ class MvSorter extends HTMLElement {
 		const zone = mv.zone;
 		this.item_rect_changed(zone);
 		
-		//log(`Container ${this.mv.id} ${this.id} (${this.X.a},${this.Y.a}) w ${rect.width} h ${rect.height} ${this.direction}`);
+		//log(`Container ${this.mv.id} ${this.id} (${this.X.a},${this.Y.a}) w ${rect.width} h ${rect.height} ${this.mv.direction}`);
 	}
 
 	container_update_parent() {
@@ -850,8 +1041,8 @@ class MvSorter extends HTMLElement {
 		const items = mono.items;
 		const cont = this;
 
-		//log('container_update_parent', cont.id);
-		const parent_target = find_parent(cont, cont);
+		// log('container_update_parent', cont.id);
+		const parent_target = find_parent(cont);
 		
 		const prev = this.mv.parent_target;
 		if (parent_target) {
@@ -880,149 +1071,6 @@ class MvSorter extends HTMLElement {
 		}
 	}
 	
-	/*
-	 * Commits all items in current container, affecting other
-	 * containers if items in this container has been moved to/from other
-	 * container.
-	 */
-	commit() {
-		
-	}
-
-	/**
-	 * Returns an array of elements currently placed in this container.
-	 */
-	elements() {
-		return this.mv.homes.slice(0);
-	}
-
-	/*
-	 * Returns an array of elements moved from this container.
-	 */
-	elements_removed() {
-		const mono = this.mv.monostate;
-		const items = mono.items;
-
-		const list = [];
-
-		const children = this.mv.$slot.assignedNodes();
-		for (let child of children) {
-			if (child.nodeType !== Node.ELEMENT_NODE) continue;
-			const item = items.get(child);
-			if (!item) continue; // may not track all elements
-
-			if (item.container === this) continue;
-
-			list.push(child);
-		}
-
-		return list;
-	}
-
-	/**
-	 * Returns the original container this element belongs to, before
-	 * reordering.
-	 */
-	element_origin(target) {
-		const mono = this.mv.monostate;
-		const items = mono.items;
-		const item = items.get(target);
-
-		if (!item) return null;
-		return target.parentElement;
-	}
-
-	/**
-	 * Returns the current container this element belongs to,
-	 *	acknowledging reordering.
-	 */
-	element_home(target) {
-		const mono = this.mv.monostate;
-		const items = mono.items;
-		const item = items.get(target);
-
-		if (!item) return null;
-		return item.container;
-	}
-
-	/**
-	 * Restores the containers items to the default position,
-	 * returning and giving back elements from other containers.
-	 */
-	reset() {
-		const seen = new Set();
-		const mono = this.mv.monostate;
-		const items = mono.items;
-
-		const homes_new = [];
-		const children = this.mv.$slot.assignedNodes();
-		for (let target of children) {
-			if (seen.has(target)) continue;
-			seen.add(target);
-
-			const item = items.get(target);
-			// TODO: re-evaluate element for tracking
-			if (!item) continue; // may not track all elements
-			
-			const old_container = item.container;
-			const old_idx = item.idx;
-			
-			mono.dirty.add(old_container);
-
-			const idx = homes_new.length; // next idx
-			item.idx = idx;
-			item.container = this; // FIXME: move things in old container
-			homes_new[idx] = target;
-
-			if (old_container !== this) {
-				//log(`deleting ${old_container.id}.${old_idx}`);
-				old_container.mv.homes.splice(old_idx, 1);
-				old_container.reindex();
-			}
-			
-			const desig = target.id || target.innerText || target.nodeName;
-			//log(`${desig} ${old_container.id}.${old_idx} -> ${this.id}.${idx}`);
-		}
-
-		for (let target of this.mv.homes) {
-			if (seen.has(target)) continue;
-			seen.add(target);
-
-			const item = items.get(target);
-			// TODO: re-evaluate element for tracking
-			if (!item) continue; // may not track all elements
-
-			const desig = target.id || target.innerText || target.nodeName;
-			const orig_container = target.parentElement;
-
-			const old_container = item.container; // should always be 'this'
-			const old_idx = item.idx;
-
-			if (!orig_container) {
-				// target could have been recently removed
-				//log(`${desig} ${old_container.id}.${old_idx} -> removed`);
-				old_container.mv.homes.splice(old_idx, 1);
-				// no need to reindex. homes_new set after this
-				item.idx = null;
-				continue;
-			}
-			
-			mono.dirty.add(orig_container);
-			
-			const idx = orig_container.mv.homes.length;
-			item.idx = idx;
-			item.container = orig_container;
-			orig_container.mv.homes[idx] = target;
-
-			//log(`${desig} ${old_container.id}.${old_idx} -> ${orig_container.id}.${idx}`);
-		}
-
-		this.mv.homes = homes_new;
-
-		MvSorter.items_moved();
-	}
-
-
 	add_dropzone() {
 		const mv = this.mv;
 		const mono = mv.monostate;
@@ -1039,7 +1087,7 @@ class MvSorter extends HTMLElement {
 			m1: 0,          // first margin
 			m2: 0,          // second margin
 			rotate: 0,      // in radians
-			t_origin: 0,    // not used
+			// t_origin: 0,    // not used
 		};
 
 		const Y = Object.assign({}, X);
@@ -2025,5 +2073,18 @@ class MvSorter extends HTMLElement {
 }
 
 customElements.define(MvSorter.is, MvSorter);
+
+function debounce(callback, time) {
+	let timeout;
+	return function () {
+		if (timeout) clearTimeout(timeout);
+		timeout = setTimeout( ()=>{
+			timeout = null;
+			callback.apply(this, arguments);
+		}, time);
+	}
+}
+
+
 export default MvSorter;
 
