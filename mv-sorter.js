@@ -38,9 +38,6 @@ class MvSorter extends HTMLElement {
 		group: {
 			type: String,
 		},
-		draghandle: {
-			type: Boolean,
-		},
 		disabled: {
 			type: Boolean,
 		},
@@ -424,7 +421,12 @@ class MvSorter extends HTMLElement {
 		// track state end and up events do not always trigger! There is
 		// a bug in gesture-event-listeners
 
-		target.draggable = true;
+		const $handle = target.querySelector("MV-DRAGHANDLE");
+		if ($handle) {
+			$handle.draggable = true;
+		} else {
+			target.draggable = true;
+		}
 
 		const X = {
 			scale: 1,         // multiplier for transform
@@ -595,25 +597,25 @@ class MvSorter extends HTMLElement {
 	}
 
 	dragstart_handler(ev) {
-		// ev.stopPropagation();
-		// ev.preventDefault();
 		ev.dataTransfer.setDragImage(this.mv.$drag_image, 0, 0);
-		// log('drag start', ev, ev.target, this.find_target(ev.target));
 	
-		let handle;
-		if (this.draghandle) {
-			handle = ev.target.querySelector("MV-DRAGHANDLE");
-		}
-	
-		this.item_drag_start(ev.target, handle);
+		const $target = this.find_target(ev.target);
+		const $handle = $target.querySelector("MV-DRAGHANDLE");
+		// log('drag start', ev, ev.target, $target, $handle);
+		this.item_drag_start($target, $handle);
 	}
 
 	touchstart_handler(ev) {
+
+		const $target = this.find_target(ev.target);
+		const $handle = $target.querySelector("MV-DRAGHANDLE");
+		if ($handle) if (!ev.target.closest("MV-DRAGHANDLE")) return;
+
 		ev.stopPropagation();
 		ev.preventDefault();
 
-		// log('touchstart', ev, ev.target, this.find_target(ev.target));
-		this.item_drag_start(this.find_target(ev.target), ev.target);
+		// log('touchstart', ev, ev.target, $target, $handle);
+		this.item_drag_start($target, $handle);
 	}
 
 	item_drag_start(target, handle) {
@@ -668,7 +670,8 @@ class MvSorter extends HTMLElement {
 	}
 
 	dragend_handler(ev) {
-		this.item_drag_end(ev.target);
+		const $target = this.find_target(ev.target);
+		this.item_drag_end($target);
 	}
 
 	touchend_handler(ev) {
@@ -1080,10 +1083,11 @@ class MvSorter extends HTMLElement {
 
 	drag_handler(ev) {
 		// log('drag', ev);
+		const $target = this.find_target(ev.target);
 		return this.track_move({
 			x: ev.clientX,
 			y: ev.clientY,
-		}, ev.target);
+		}, $target);
 	}
 
 	static touchmove_handler(ev) {
