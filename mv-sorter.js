@@ -210,7 +210,7 @@ class MvSorter extends HTMLElement {
 	}
 
 	static get template() {
-		return `
+		return html`
 		<style>
 		:host { display: block }
 
@@ -218,6 +218,7 @@ class MvSorter extends HTMLElement {
 			display: flex;
 			min-height: 20px;
 			min-width: 20px;
+			transition: min-height .5s, min-width .5s;
 		}
 
 		#dropzone {
@@ -476,6 +477,8 @@ class MvSorter extends HTMLElement {
 
 			oA += A.size + A.m2;
 		}
+
+		// log("render_items", container.id, oA);
 	}
 
 	position_item_last(target) {
@@ -535,18 +538,26 @@ class MvSorter extends HTMLElement {
 		}
 	}
 
+	static axis_map = {
+		row: {
+			A: 'X',
+			B: 'Y',
+			inline: 'width',
+			min_inline: 'min-width',
+			offset: 'offsetWidth',
+		},
+		col: {
+			A: 'Y',
+			B: 'X',
+			inline: 'height',
+			min_inline: 'min-height',
+			offset: 'offsetHeight',
+		},
+	}
+
 	axisAB() {
-		if (this.mv.direction == 'row') {
-			return {
-				A: 'X',
-				B: 'Y',
-			};
-		} else {
-			return {
-				A: 'Y',
-				B: 'X',
-			};
-		}
+		if (this.mv.direction == 'row') return MvSorter.axis_map.row;
+		return MvSorter.axis_map.col;
 	}
 
 	static axisB(axis) {
@@ -1169,12 +1180,17 @@ class MvSorter extends HTMLElement {
 	}
 
 	track_move(track, target) {
-		const item = this.mv.monostate.items.get(target);
+		const mono = this.mv.monostate;
+		const item = mono.items.get(target);
 		if (!item || !item.grabbed) {
 			if (!target) return;
 			// log("target", target);
 			return;
 		}
+
+		// Consider top left as out of bounds, since that is returned for when
+		// mouse is leaving window.
+		if (!track.x && !track.y) return;
 
 		if (typeof item.X.pos_start !== 'undefined') {
 			item.X.pos_end = track.x
@@ -1191,6 +1207,8 @@ class MvSorter extends HTMLElement {
 				- item.Y.offset_handle
 				- item.Y.grab;
 		}
+
+		mono.track = track;
 
 		// log(`(${item.X.pos_end},${item.Y.pos_end}})`);
 		// MvSorter.throttled_move(track, target); // for DEBUG
@@ -1443,7 +1461,7 @@ class MvSorter extends HTMLElement {
 		//}
 		
 		const containers = mono.containers;
-		let container, oA, oB, homesNew, idx;
+		let container, oA, oB, homesNew, idx,resized;
 
 
 		// TODO: pass in data instead of using scoped varables
@@ -1476,7 +1494,12 @@ class MvSorter extends HTMLElement {
 		
 		for (container of containers) {
 			if (!container.offsetParent) continue; // currently hidden
-			
+
+			// TODO: skip other groups or un-touched containers. Would have to
+			// handle going to/from other container as well as nested container.
+			// log("assign_dropzone", this.id, container.id, s_item.container.id);
+			// if (!( (this === container) && (this === s_item.container))) continue;
+
 			const mv = container.mv;
 			const ax = container.axisAB();
 			idx = 0;
@@ -1484,7 +1507,7 @@ class MvSorter extends HTMLElement {
 			oA = mv[ax.A].a + mv[ax.A].p1;
 			oB = mv[ax.B].a + mv[ax.B].p1;
 
-			//log(`${container.id} (${oA},${oB})`);
+			// log(`assign_dropzone ${container.id} (${oA},${oB})`);
 			
 			for (let target of mv.homes) {
 				//if( !target ) log( mv.homes ); // DEBUG
@@ -1534,7 +1557,29 @@ class MvSorter extends HTMLElement {
 			if (zone_idx >= homesNew.length && zone_cont == container) setZone();
 			
 			mv.homes = homesNew;
-			//log( homesNew );
+
+			const mv_size = Math.round(oA - mv[ax.A].a) + "px";
+			if (mv_size !== mv.$main.style[ax.min_inline]) {
+				// console.warn("assign_dropzone", mv.id, mv.$main.style[ax.min_inline],
+				// 	"->",	mv_size);
+
+				// Trigger container_moved()
+				mv.$main.style[ax.min_inline] = mv_size;
+				resized = true;
+
+				//TODO: Use raf instead of direkt resize. For this, we should meassure
+				//the position of all elements before and after the change and adjust
+				//the position accordingly. The movement of containers could cause the
+				//relative position of dragged element to change.
+			}
+		}
+
+		if (resized) {
+			//TODO: Use raf instead of transition. Adjusting grabbed item
+			const item = mono.items.get(mono.last_grabbed);
+			if (item?.grabbed) {
+				// log("adjust pos", item);
+			}
 		}
 
 	}
@@ -2092,6 +2137,11 @@ function debounce(callback, time) {
 	}
 }
 
+function html(template, ...components) {
+	return template.reduce((accumulator, part, i) => {
+		return accumulator + components[i - 1] + part
+	})
+}
 
 export default MvSorter;
 
