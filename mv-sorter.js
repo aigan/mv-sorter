@@ -212,9 +212,7 @@ class MvSorter extends HTMLElement {
 	static get template() {
 		return `
 		<style>
-		:host {
-			display: block;
-		}
+		:host { display: block }
 
 		main {
 			display: flex;
@@ -224,7 +222,6 @@ class MvSorter extends HTMLElement {
 
 		#dropzone {
 			pointer-events:none;
-			/*margin: 0.5em;*/
 			position: absolute;
 			outline: 3px dashed hsla(0, 0%, 0%, 0.5);
 			outline-offset: -6px;
@@ -233,11 +230,8 @@ class MvSorter extends HTMLElement {
 			opacity: 0;
 			transition: opacity .2s;
 		}
-
 		</style>
-		<main id="main">
-			<slot id="slot"></slot>
-		</main>
+		<main><slot></slot></main>
 `;
 	}
 	
@@ -275,9 +269,9 @@ class MvSorter extends HTMLElement {
 			debounce(MvSorter.items_moved, 200);
 
 		// Import global styles to page
-		const style = document.createElement('style');
-		style.innerHTML = 'body.mv-moving-child{cursor:move}';
-		document.body.appendChild(style);
+		// const style = document.createElement('style');
+		// style.innerHTML = 'body.mv-moving-child{cursor:move}';
+		// document.body.appendChild(style);
 	}
 
 	connectedCallback() {
@@ -288,8 +282,8 @@ class MvSorter extends HTMLElement {
 
 		const mv = this.mv; // put our data here
 
-		const $main = mv.$main = this.$$('#main');
-		mv.$slot = this.$$('#slot');
+		const $main = mv.$main = this.$$('main');
+		mv.$slot = this.$$('slot');
 		mv.$dropzone = this.$$("#dropzone");
 
 		this.properties_reactions();
@@ -385,9 +379,7 @@ class MvSorter extends HTMLElement {
 		
 		mono.dirty.add(this);
 		
-		const children = this.mv.$slot.assignedNodes();
-		for (let child of children) {
-			if (child.nodeType !== Node.ELEMENT_NODE) continue;
+		for (const child of this.children ) {
 			const item = items.get(child);
 			if (!item) continue; // may not track all elements
 
@@ -612,9 +604,6 @@ class MvSorter extends HTMLElement {
 		// const desig = target.id || target.innerText || target.nodeName;
 		// log(`add_item for ${this.mv.id} item ${desig}`);
 
-		// track state end and up events do not always trigger! There is
-		// a bug in gesture-event-listeners
-
 		const $handle = target.querySelector("MV-DRAGHANDLE") || target;
 		$handle.draggable = true;
 
@@ -628,7 +617,7 @@ class MvSorter extends HTMLElement {
 			offset_handle: 0, // relative target
 			t_origin: 0,      // transform origin
 			size: 0,          // size excluding margins
-			mid_handle: 0,    // half the size of the handle
+			grab: 0,    // half the size of the handle
 			m_size: 0,        // size including margins
 			m1: 0,            // first margin
 			m2: 0,            // second margin
@@ -714,8 +703,8 @@ class MvSorter extends HTMLElement {
 
 		this.handle_rect_changed(target);
 
-		X.t_origin = X.pos + X.offset_handle + X.mid_handle;
-		Y.t_origin = Y.pos + Y.offset_handle + Y.mid_handle;
+		X.t_origin = X.pos + X.offset_handle + X.grab;
+		Y.t_origin = Y.pos + Y.offset_handle + Y.grab;
 		
 		//log( item );
 	}
@@ -732,8 +721,13 @@ class MvSorter extends HTMLElement {
 		if (handle == target) {
 			item.X.offset_handle = 0;
 			item.Y.offset_handle = 0;
-			item.X.mid_handle = item.X.size / 2;
-			item.Y.mid_handle = item.Y.size / 2;
+
+			// console.warn("handle_rect_changed");
+			item.X.grab = mono.grab_x;
+			item.Y.grab = mono.grab_y;
+
+			// item.X.grab = item.X.size / 2;
+			// item.Y.grab = item.Y.size / 2;
 			return;
 		}
 
@@ -748,8 +742,8 @@ class MvSorter extends HTMLElement {
 
 		//log('Y', rect.y, window.scrollY, item.Y.offset );
 
-		item.X.mid_handle = rect.width / 2;
-		item.Y.mid_handle = rect.height / 2;
+		item.X.grab = rect.width / 2;
+		item.Y.grab = rect.height / 2;
 	}
 
 	remove_item(node) {
@@ -791,26 +785,35 @@ class MvSorter extends HTMLElement {
 	
 		const $target = this.find_target(ev.target);
 		const $handle = $target.querySelector("MV-DRAGHANDLE");
+
 		// log('drag start', ev, ev.target, $target, $handle);
-		this.item_drag_start($target, $handle);
+		this.item_drag_start($target, $handle, {
+			x: ev.clientX,
+			y: ev.clientY,
+		});
 	}
 
 	touchstart_handler(ev) {
-
+		if (ev.touches[1]) return;
 		const $target = this.find_target(ev.target);
 		const $handle = $target.querySelector("MV-DRAGHANDLE");
 		if ($handle) if (!ev.target.closest("MV-DRAGHANDLE")) return;
+
+		const touche = ev.touches[0];
 
 		ev.stopPropagation();
 		ev.preventDefault();
 
 		// log('touchstart', ev, ev.target, $target, $handle);
-		this.item_drag_start($target, $handle);
+		this.item_drag_start($target, $handle, {
+			x: touche.clientX,
+			y: touche.clientY,
+		});
 	}
 
-	item_drag_start(target, handle) {
+	item_drag_start($target, $handle, grabpoint) {
 		const mono = this.mv.monostate;
-		const item = mono.items.get(target);
+		const item = mono.items.get($target);
 
 		// log('item_drag_start', target, item, handle );
 
@@ -819,14 +822,18 @@ class MvSorter extends HTMLElement {
 		if (item.grabbed) return; // already grabbed?
 		if (this.disabled) return;
 		
-		item.handle = handle ?? target;
+		item.handle = $handle ?? $target;
 		item.grabbed = true;
 
 		// log('item_drag_start', item._id, target);
-		mono.last_grabbed = target;
+		mono.last_grabbed = $target;
 
-		/* TODO: Only do handle_rect_changed when needed */
-		this.item_rect_changed(target);
+		const rect = $target.getBoundingClientRect();
+		mono.grab_x = grabpoint.x - rect.x;
+		mono.grab_y = grabpoint.y - rect.y;
+
+		// TODO: Only do handle_rect_changed when needed
+		this.item_rect_changed($target);
 
 		item.throwed = false;
 
@@ -836,8 +843,8 @@ class MvSorter extends HTMLElement {
 		const add = 0.01 * size + 5;
 		const scale = (size + add) / size;
 		
-		MvSorter.addAnim('scale', MvSorter.animScale(target, scale, 200), target);
-		target.classList.add('moved');
+		MvSorter.addAnim('scale', MvSorter.animScale($target, scale, 200), $target);
+		$target.classList.add('moved');
 		this.classList.add('moving-child');
 		document.body.classList.add('mv-moving-child');
 		
@@ -854,7 +861,7 @@ class MvSorter extends HTMLElement {
 			A.turned = false;
 			A.crashed = false;
 			A.pos_start = A.pos; // Only defined if axis used
-			MvSorter.addAnim('pos' + axis, MvSorter.animPosDrag(target, axis), target);
+			MvSorter.addAnim('pos' + axis, MvSorter.animPosDrag($target, axis), $target);
 		}
 
 	}
@@ -1143,10 +1150,10 @@ class MvSorter extends HTMLElement {
 			log("multitouch");
 			return;
 		}
-		const touches = ev.touches[0];
+		const touche = ev.touches[0];
 
-		// const ontop = this.shadowRoot.elementFromPoint(touches.clientX, touches.clientY);
-		// const target = this.find_target(touches.target);
+		// const ontop = this.shadowRoot.elementFromPoint(touche.clientX, touche.clientY);
+		// const target = this.find_target(touche.target);
 		const mono = MvSorter._monostate;
 		const target = mono.last_grabbed;
 		if (!target) return;
@@ -1155,8 +1162,8 @@ class MvSorter extends HTMLElement {
 
 		ev.stopPropagation();
 		return item.container.track_move({
-			x: touches.clientX,
-			y: touches.clientY,
+			x: touche.clientX,
+			y: touche.clientY,
 		}, target);
 		
 	}
@@ -1174,7 +1181,7 @@ class MvSorter extends HTMLElement {
 				+ window.scrollX
 				- item.X.offset
 				- item.X.offset_handle
-				- item.X.mid_handle;
+				- item.X.grab;
 		}
 
 		if (typeof item.Y.pos_start !== 'undefined') {
@@ -1182,7 +1189,7 @@ class MvSorter extends HTMLElement {
 				+ window.scrollY
 				- item.Y.offset
 				- item.Y.offset_handle
-				- item.Y.mid_handle;
+				- item.Y.grab;
 		}
 
 		// log(`(${item.X.pos_end},${item.Y.pos_end}})`);
@@ -1717,7 +1724,7 @@ class MvSorter extends HTMLElement {
 			else if (B.rotate < -rot_max) B.rotate = - rot_max;
 
 			//log('rotate', axis, B.rotate );
-			A.t_origin = A.pos + A.offset_handle + A.mid_handle;
+			A.t_origin = A.pos + A.offset_handle + A.grab;
 			
 			
 			A.pos_speed = pos_speed;

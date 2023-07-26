@@ -3,20 +3,14 @@ mv-sorter > .moved {
 	transition: box-shadow .2s;
 }
 
-mv-sorter:not([draghandle]):not(.moving-child):not([disabled]) > :hover {
+mv-sorter:not(.moving-child):not([disabled]) > :hover {
 	box-shadow: 0 0 15px 5px rgba(255, 255, 190, .75);
 	outline: 1px solid #eee;
 	transition: box-shadow .2s;
 	z-index: 2;
 }
 
-mv-sorter:not([disabled]) mv-draghandle {
-	cursor: move;
-}
-
-mv-sorter:not([draghandle]):not([disabled]) [draggable=true] {
-	cursor: move;
-}
+[draggable ] { cursor: move }
 
 mv-sorter[disabled] {
 	opacity: .5;
