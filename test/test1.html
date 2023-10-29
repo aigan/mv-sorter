@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<link rel="stylesheet" href="../mv-sorter.css">
+
+<script type="module">
+  import '../mv-sorter.js';
+</script>
+<style>
+  mv-sorter > div {
+    /* margin: 1em; */
+    padding: 1.5em 2em;
+    background: lightblue;
+  }
+  mv-sorter mv-draghandle {
+		position: absolute;
+		bottom: 0;
+		right: 2px;
+	}
+  html { background: #EEE }
+  mv-sorter {
+    --gap: 2em;
+    /* --dropzone-outline: thick solid red; */
+    /* --dropzone-outline-offset: 0px; */
+    /* --dropzone-background: black; */
+  }
+
+</style>
+
+<mv-sorter id="s1" group="1" >
+  <div>A</div>
+  <div>B<mv-draghandle>&#9776</mv-draghandle></div>
+</mv-sorter>
+<div>
+  <button onclick="s1.reset()">Reset</button>
+  <button onclick="console.log(s1.elements())">List All</button>
+  <button onclick="console.log(s1.elements_removed())">List Removed</button>
+  <button onclick="console.log(s1.elements_added())">List Added</button>
+  <button onclick="console.log(s1.is_altered)">Altered?</button>
+  <button onclick="s1.commit()">Commit</button>
+</div>
+<hr>
+<mv-sorter id="s2" group="1"><div>C</div><div>D</div></mv-sorter>
+
+
+<pre id="log">Log 3:
+</pre>

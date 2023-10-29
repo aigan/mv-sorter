@@ -1,0 +1,34 @@
+<link rel="stylesheet" href="../mv-sorter.css">
+<script type="module" src="../mv-sorter.js"></script>
+<style>
+mv-sorter {
+	background: #FFE;
+}
+mv-sorter > div {
+  padding: .7em 1em;
+	background: lightblue;
+}
+
+mv-sorter#with-margin > div {
+	margin-right: 1.5em;
+}
+
+mv-sorter#with-gap {
+	--gap: 1.5em;
+}
+
+</style>
+<h2>Item margin</h2>
+<mv-sorter id="with-margin">
+	<div>A</div>
+	<div>BBB</div>
+	<div>CCCCCCCCC</div>
+</mv-sorter>
+
+<h2>Item gap</h2>
+<mv-sorter id="with-gap">
+	<div>A</div>
+	<div>BBB</div>
+	<div>CCCCCCCCC</div>
+</mv-sorter>
+

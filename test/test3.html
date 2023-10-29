@@ -1,0 +1,28 @@
+<link rel="stylesheet" href="../mv-sorter.css">
+<script type="module" src="../mv-sorter.js"></script>
+<style>
+section {
+	/* flex container */
+	display: flex;
+	gap: 1em;
+	border: thin solid black;
+}
+mv-sorter {
+	/* flex item */
+	flex-basis: 0;
+	flex-grow: 1;
+
+	background: #FFE;
+
+	--gap: 2em;
+	
+}
+mv-sorter > div {
+  padding: .2em 1em;
+	background: lightblue;
+}
+</style>
+<section>
+	<mv-sorter column group=1 autosave><div>A</div><div>B</div></mv-sorter>
+	<mv-sorter column group=1 autosave><div>C</div><div>D</div></mv-sorter>
+</section>

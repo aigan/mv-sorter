@@ -33,6 +33,10 @@
   "repository": "https://github.com/aigan/mv-sorter.git",
   "author": "Jonas Liljegren <jonas@liljegren.org> (http://jonas.liljegren.org/)",
   "license": "MIT",
-  "dependencies": {},
-  "devDependencies": {}
+  "devDependencies": {
+    "grunt": "^1.6.1",
+    "grunt-contrib-clean": "^2.0.1",
+    "grunt-contrib-copy": "^1.0.0",
+		"@polymer/polymer": "^3.0.0"
+  }
 }

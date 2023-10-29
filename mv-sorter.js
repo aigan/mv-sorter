@@ -42,14 +42,19 @@ class MvSorter extends HTMLElement {
 	 */
 	commit() {
 		if (!this.is_altered) return;
+		if (1) { //debug
+			const els_old = [...this.children].map($el => MvSorter.desig($el));
+			const els_new = this.elements().map($el => MvSorter.desig($el));
+			log("Commit", this.id, els_old, "=>", els_new);
+		}
 		this.replaceChildren(... this.elements());
-		// log("Saved", this.mv.id);
 	}
 
 	/**
 	 * Returns an array of elements currently placed in this container.
 	 */
 	elements() {
+		log("homes", this.id, this.mv.homes);
 		return this.mv.homes.slice(0);
 	}
 
@@ -179,7 +184,6 @@ class MvSorter extends HTMLElement {
 			// TODO: re-evaluate element for tracking
 			if (!item) continue; // may not track all elements
 
-			// const desig = target.id || target.innerText || target.nodeName;
 			const orig_container = target.parentElement;
 
 			const old_container = item.container; // should always be 'this'
@@ -216,6 +220,7 @@ class MvSorter extends HTMLElement {
 
 		main {
 			display: flex;
+			gap: var(--gap); /* FIXME: add gap in distribution calc */
 			min-height: 20px;
 			min-width: 20px;
 			transition: min-height .5s, min-width .5s;
@@ -224,8 +229,10 @@ class MvSorter extends HTMLElement {
 		#dropzone {
 			pointer-events:none;
 			position: absolute;
-			outline: 3px dashed hsla(0, 0%, 0%, 0.5);
-			outline-offset: -6px;
+			/* outline: 3px dashed hsla(0, 0%, 0%, 0.5); */
+			outline: var(--dropzone-outline, 3px dashed hsla(0, 0%, 0%, 0.5));
+			outline-offset: var(--dropzone-outline-offset, -6px);
+			background: var(--dropzone-background);
 			height: 100px;
 			width: 100px;
 			opacity: 0;
@@ -245,6 +252,9 @@ class MvSorter extends HTMLElement {
 			dirty: new Set(),
 			render_jobs: new Map(),
 		};
+
+		const $root = this.attachShadow({ mode: "open" });
+		$root.innerHTML = MvSorter.template;
 
 		const mv = this.mv = {}; // put our data here
 
@@ -269,6 +279,14 @@ class MvSorter extends HTMLElement {
 		this.constructor.debounced_items_moved =
 			debounce(MvSorter.items_moved, 200);
 
+		
+		//# global touch handlers
+		window.addEventListener('touchmove', MvSorter.touchmove_handler);
+		window.addEventListener('touchstart', MvSorter.touchstart_handler, { passive: false });
+		window.addEventListener('touchend', MvSorter.touchend_handler, { passive: false });
+		
+
+
 		// Import global styles to page
 		// const style = document.createElement('style');
 		// style.innerHTML = 'body.mv-moving-child{cursor:move}';
@@ -278,8 +296,7 @@ class MvSorter extends HTMLElement {
 	connectedCallback() {
 		// super.connectedCallback();
 
-		const $root = this.attachShadow({ mode: "open" });
-		$root.innerHTML = MvSorter.template;
+		//log('[+]', MvSorter.desig(this) );
 
 		const mv = this.mv; // put our data here
 
@@ -289,61 +306,59 @@ class MvSorter extends HTMLElement {
 
 		this.properties_reactions();
 		
-		mv.debounced_domchange = debounce(this.domchange_handler.bind(this), 100);
 		mv.mutation_observer = new MutationObserver(this.nodes_changed.bind(this));
 		mv.mutation_observer.observe(this, { childList: true });
-		this.addEventListener('dom-change', mv.debounced_domchange);
 
-		const io = new IntersectionObserver(mv.debounced_domchange);
-		io.observe(this);
+		mv.debounced_domchange = debounce(this.domchange_handler.bind(this), 100);
+		// const io = new IntersectionObserver(mv.debounced_domchange);
+		// io.observe(this);
 
 		mv.resize_observer = new ResizeObserver(this.container_moved.bind(this));
 
 		mv.parent_target = null; // update on dom change
 
+		mv.gap = parseFloat(getComputedStyle(mv.$main).gap) || 0;
+
 		this.dir_changed();
 		this.lock_dir_changed();
 
 		this.add_dropzone();
+
+		this.domchange_handler();
+		// this.container_moved();
+
 		this.container_rect_changed();
 
 		mv.$drag_image = document.createElement('div');
 
 		mv.bound_tap_handler = this.tap_handler.bind(this);
 		mv.bound_dragstart_handler = this.dragstart_handler.bind(this);
-		mv.bound_touchstart_handler = this.touchstart_handler.bind(this);
 		mv.bound_dragend_handler = this.dragend_handler.bind(this);
-		mv.bound_touchend_handler = this.touchend_handler.bind(this);
-		mv.bound_touchcancel_handler = this.touchcancel_handler.bind(this);
 		mv.bound_drag_handler = this.drag_handler.bind(this);
 
-		const mono = mv.monostate;
+		// const mono = mv.monostate;
 		// mono.bound_touchmove_handler = this.touchmove_handler.bind(this);
 
 		this.addEventListener('click', mv.bound_tap_handler);
 		this.addEventListener('dragstart', mv.bound_dragstart_handler);
-		this.addEventListener('touchstart', mv.bound_touchstart_handler);
 		this.addEventListener('dragend', mv.bound_dragend_handler);
-		this.addEventListener('touchend', mv.bound_touchend_handler);
 		this.addEventListener('drag', mv.bound_drag_handler);
-
-		window.addEventListener('touchmove', MvSorter.touchmove_handler);
-
 	}
 
 	disconnectedCallback() {
+
+		// Disconnection happens during movement. Keep things around in case they
+		// will be attached again.
+		return;
+
 		const mono = this.mv.monostate;
 		const items = mono.items;
 
-		//log(`disconnectedCallback ${this.id}`);
+		log('[-]', this.id);
 		
-
-		window.removeEventListener('touchmove', MvSorter.touchmove_handler);
-
-
-		// Setting display to none should make offsetParent return null ;
-		// which will disable updates during our removal of the children here ;
-		this.style.display = 'none';
+		// Setting display to none should make offsetParent return null
+		// which will disable updates during our removal of the children here
+		// this.style.display = 'none';
 		
 		if (this.mv.parent_target) {
 			//log('removing parent', this.mv.parent_target);
@@ -360,7 +375,10 @@ class MvSorter extends HTMLElement {
 		// super.disconnectedCallback();
 	}
 	
+	// Place all items for this container based on its new dimensions.
 	// optimized for frequent calls
+
+	// FROM: ResizeObserver, domchange_handler, animScaleCrash
 	container_moved(ev) {
 		const mono = this.mv.monostate;
 		const items = mono.items;
@@ -393,6 +411,10 @@ class MvSorter extends HTMLElement {
 			hurry = true;
 		}
 
+		this.mv.gap = parseFloat(getComputedStyle(this.mv.$main).gap) || 0;
+		// this.mv.gap = 0; 
+		// log("gap", this.mv.gap);
+
 		if (mono.render_jobs.has('items_moved')) { } // on my way
 		else if (hurry) {
 			//log('hurry', this.mv.id);
@@ -403,6 +425,7 @@ class MvSorter extends HTMLElement {
 		}
 	}
 
+	// FROM: container_moved, nodes_changed
 	static items_moved() {
 		const mono = MvSorter._monostate;
 		// log('items moved');
@@ -419,6 +442,8 @@ class MvSorter extends HTMLElement {
 		}
 	}
 
+
+	// FROM: items_moved
 	render_items() {
 		const container = this;
 		const mv = container.mv;
@@ -475,12 +500,13 @@ class MvSorter extends HTMLElement {
 			
 			//target.style.visibility = 'visible'; // TEST
 
-			oA += A.size + A.m2;
+			oA += A.size + A.m2 + mv.gap;
 		}
 
 		// log("render_items", container.id, oA);
 	}
 
+	// FROM: add_item
 	position_item_last(target) {
 		const container = this;
 		const mv = container.mv;
@@ -500,7 +526,7 @@ class MvSorter extends HTMLElement {
 		const B = item[ax.B];
 
 		const gA = l_item[ax.A].offset + l_item[ax.A].pos_home;
-		const oA = gA + l_item[ax.A].size + l_item[ax.A].m2 + A.m1;
+		const oA = gA + l_item[ax.A].size + l_item[ax.A].m2 + mv.gap + A.m1;
 
 		const gB = l_item[ax.B].offset + l_item[ax.B].pos_home;
 		const oB = gB - l_item[ax.B].m1 + B.m1;
@@ -564,10 +590,11 @@ class MvSorter extends HTMLElement {
 		return axis == 'X' ? 'Y' : 'X';
 	}
 	
+	// FROM: MutationObserver
 	nodes_changed(mutations) {
 		const mono = this.mv.monostate;
 	
-		// log("Container", this.mv.id, 'nodes_changed');
+		// log("Container", this.mv.id, 'nodes_changed', mutations);
 
 		// mono.dirty.add(this);
 		// return MvSorter.items_moved();
@@ -593,27 +620,27 @@ class MvSorter extends HTMLElement {
 
 		for (const cont of mono.dirty) { 
 			if (cont === this) continue;
-			// log("sub-commit", cont.mv.id);
+			log("sub-commit", cont.id);
 			cont.commit();
 		}
 
 		mono.dirty.add(this);
 
+		this.domchange_handler();
 		MvSorter.items_moved();
-
-		this.mv.debounced_domchange.call(this);
 	}
 
 	add_item(target) {
+		// log("add_item...");
 		if (target.nodeType !== Node.ELEMENT_NODE) return;
 		if (target.id == 'dropzone') return;
 		if (!target.offsetParent) return; // element hidden
 
 		const mono = this.mv.monostate;
 		if (mono.items.has(target)) return;
+		if (target.tagName.startsWith("DOM-") ) return;
 		
-		// const desig = target.id || target.innerText || target.nodeName;
-		// log(`add_item for ${this.mv.id} item ${desig}`);
+		//log("add_item for", this.id, ":", MvSorter.desig(target));
 
 		const $handle = target.querySelector("MV-DRAGHANDLE") || target;
 		$handle.draggable = true;
@@ -665,6 +692,7 @@ class MvSorter extends HTMLElement {
 		this.mv.resize_observer.observe(target);
 	}
 
+	// FROM: render_items, add_item, item_drag_start, container_rect_changed
 	item_rect_changed(target) {
 		/* Keep last known value if target is not currently visible. */
 		if (!target.offsetParent) return;
@@ -675,7 +703,7 @@ class MvSorter extends HTMLElement {
 		
 		const transform = target.style.transform;
 		target.style.transform = "";
-		const rect = target.getBoundingClientRect(); // original dimentions
+		const rect = target.getBoundingClientRect(); // original dimensions
 		target.style.transform = transform;
 
 		//log( item._id, rect );
@@ -700,6 +728,11 @@ class MvSorter extends HTMLElement {
 		Y.m1 = parseFloat(c.marginTop);
 		Y.m2 = parseFloat(c.marginBottom);
 
+		// Adding the gap to the item with would also have to consider
+		// item position in container. Will instead add gap in
+		// find_dropzone()
+
+		// m_size is used in find_cropzone()
 		X.m_size = X.m1 + X.size + X.m2;
 		Y.m_size = Y.m1 + Y.size + Y.m2;
 
@@ -708,8 +741,9 @@ class MvSorter extends HTMLElement {
 		Y.offset = Y_new;
 
 		// for DEBUG
-		if (false) { // X_prev !== X.offset || Y_prev !== Y.offset ){
-			log(`${this.id} ${MvSorter.desig(target)} (${Math.round(X_prev)},${Math.round(Y_prev)})-> (${Math.round(X_new)},${Math.round(Y_new)}) `);
+		if (true) { // X_prev !== X.offset || Y_prev !== Y.offset ){
+			//log(`*** ${this.id} ${MvSorter.desig(target)} (${Math.round(X_prev)},${Math.round(Y_prev)})-> (${Math.round(X_new)},${Math.round(Y_new)}) `);
+			log(`${this.id} ${MvSorter.desig(target)} Size ${X.m_size},${Y.m_size}`);
 		}
 
 		this.handle_rect_changed(target);
@@ -720,6 +754,7 @@ class MvSorter extends HTMLElement {
 		//log( item );
 	}
 
+	// item_rect_changed, 
 	handle_rect_changed(target) {
 		const mono = this.mv.monostate;
 		const items = mono.items;
@@ -757,10 +792,10 @@ class MvSorter extends HTMLElement {
 		item.Y.grab = rect.height / 2;
 	}
 
-	remove_item(node) {
+	remove_item($target) {
 		const mono = this.mv.monostate;
 		const items = mono.items;
-		const item = items.get(node);
+		const item = items.get($target);
 
 		if (!item) return;
 
@@ -783,11 +818,11 @@ class MvSorter extends HTMLElement {
 		}
 		item.children_containers.clear();
 
-		this.mv.resize_observer.unobserve(node);
+		this.mv.resize_observer.unobserve($target);
 
-		items.delete(node);
+		items.delete($target);
 		
-		//log( 'Removal', this.mv.id, node );
+		log( 'Removal', this.id, item._id );
 		MvSorter.debounced_items_moved();
 	}
 
@@ -804,19 +839,22 @@ class MvSorter extends HTMLElement {
 		});
 	}
 
-	touchstart_handler(ev) {
-		if (ev.touches[1]) return;
-		const $target = this.find_target(ev.target);
-		const $handle = $target.querySelector("MV-DRAGHANDLE");
-		if ($handle) if (!ev.target.closest("MV-DRAGHANDLE")) return;
+	static touchstart_handler(ev) {
+		if (ev.touches[1]) return true;
+		const $target = MvSorter.find_target(ev.target);
+		if (!$target) return true;
 
+		const $cont = $target.closest("mv-sorter");
+		const $handle = $target.querySelector("MV-DRAGHANDLE");
+		if ($handle) if (!ev.target.closest("MV-DRAGHANDLE")) return true;
+
+		// log('touchstart', ev, ev.target, $target, $handle);
 		const touche = ev.touches[0];
 
 		ev.stopPropagation();
 		ev.preventDefault();
 
-		// log('touchstart', ev, ev.target, $target, $handle);
-		this.item_drag_start($target, $handle, {
+		$cont.item_drag_start($target, $handle, {
 			x: touche.clientX,
 			y: touche.clientY,
 		});
@@ -882,12 +920,16 @@ class MvSorter extends HTMLElement {
 		this.item_drag_end($target);
 	}
 
-	touchend_handler(ev) {
+	static touchend_handler(ev) {
+		const $target = MvSorter.find_target(ev.target);
+		if (!$target) return;
+		const $cont = $target.closest("mv-sorter");
+
 		ev.stopPropagation();
 		ev.preventDefault();
 
 		// log("touchend", ev.target);
-		this.item_drag_end(this.find_target(ev.target));
+		$cont.item_drag_end($target);
 	}
 
 	touchcancel_handler(ev) {
@@ -898,11 +940,13 @@ class MvSorter extends HTMLElement {
 		const item = this.mv.monostate.items.get(target);
 		if (!item || !item.grabbed) return;
 
-		// log(`item_drag_end ${item._id} (${item.X.pos_end},${item.Y.pos_end}) --> (${item.X.pos_home},${item.Y.pos_home}) `);
+		log(`item_drag_end ${item._id} (${item.X.pos_end},${item.Y.pos_end}) --> (${item.X.pos_home},${item.Y.pos_home}) `);
 
 		item.throwed = true;
 		item.grabbed = false;
-		
+
+		this.mv.monostate.last_grabbed = null;
+
 		this.classList.remove('moving-child');
 		document.body.classList.remove('mv-moving-child');
 
@@ -936,18 +980,17 @@ class MvSorter extends HTMLElement {
 	static item_moved(target) {
 		const mono = MvSorter._monostate;
 		const item = mono.items.get(target);
-		
-		log(`item_moved ${item._id}`);
-
-		//# Workaround for possible race conditions.
-		item.container.assign_dropzone(target, item.idx);
 
 		/* Moved away from original home? */
 		if (!item.X.pos_home && !item.Y.pos_home) return;
 
-		const cont = item.container;
+		const $cont = item.container;
+		const $orig = $cont.element_origin(target);
+		
+		log('item_moved', item._id, $orig.id, "=>", $cont.id );
 
-		const orig = cont.element_origin(target);
+		//# Workaround for possible race conditions.
+		// item.container.assign_dropzone(target, item.idx);
 
 		const init = {
 			detail: { element: target, item: item, },
@@ -955,16 +998,16 @@ class MvSorter extends HTMLElement {
 			bubbles: true,
 		};
 		
-		if (cont !== orig) {
+		if ($cont !== $orig) {
 			//log(`Item ${item._id} moved to other container`);
-			orig.dispatchEvent(new CustomEvent('dropoutside', init));
+			$orig.dispatchEvent(new CustomEvent('dropoutside', init));
 		} else {
 			//log(`Item ${item._id} moved`);
 		}
 
-		cont.dispatchEvent(new CustomEvent('drop', init));
+		$cont.dispatchEvent(new CustomEvent('drop', init));
 
-		if (cont.autosave) cont.commit();
+		if ($cont.autosave) $cont.commit();
 	}
 
 	reindex() {
@@ -986,9 +1029,9 @@ class MvSorter extends HTMLElement {
 		return length;
 	}
 
-
+	// FROM: nodes_changed
 	domchange_handler() {
-		// log(`domchange_handler ${this.mv.id} ${this.id}`);
+		//log(`domchange_handler ${this.mv.id} ${this.id}`);
 
 		// parent might not exist on creation. Check for availability now
 		const parent = this.offsetParent;
@@ -1018,6 +1061,7 @@ class MvSorter extends HTMLElement {
 		this.container_moved(); // Place new items
 	}
 
+	// FROM: items_moved
 	container_rect_changed() {
 		//log(`container_rect_Changed ${this.mv.id} ${this.id}`);
 		// If recently hidden, keep last known position
@@ -1054,38 +1098,32 @@ class MvSorter extends HTMLElement {
 		//log(`Container ${this.mv.id} ${this.id} (${this.X.a},${this.Y.a}) w ${rect.width} h ${rect.height} ${this.mv.direction}`);
 	}
 
+	// FROM: domchange_handler
 	container_update_parent() {
+		// will not work async. Must keep parent_target in sync
+		
 		const mono = this.mv.monostate;
 		const items = mono.items;
 		const cont = this;
 
-		// log('container_update_parent', cont.id);
-		const parent_target = find_parent(cont);
-		
-		const prev = this.mv.parent_target;
-		if (parent_target) {
-			//log('container_update_parent', cont.id, '-->', parent_item._id);
-			if (prev == parent_target) return; // no change
+		// log('CUP', cont.id);
+		const $parent_new = find_parent(cont);
+		const $parent_old = this.mv.parent_target;
 
-			this.mv.parent_target = parent_target;
-			items.get(parent_target).children_containers.add(this);
-		}
+		//log('container_update_parent', cont.id, '-->', parent_item._id);
+		if ($parent_new === $parent_old) return; // no change
 
-		if (prev) prev.children_containers.delete(this); // unless no change		
+		this.mv.parent_target = $parent_new;
 		
+		if ($parent_new) items.get($parent_new).children_containers.add(this);
+		if ($parent_old) items.get($parent_old).children_containers.delete(this);
 		
-		function find_parent(el) {
-			const parent = el.parentNode || el.host;
-			if (!parent) {
-				//log('no parent');
-				return null;
+		function find_parent($el) {
+			while ($el) {
+				$el = $el.parentNode || $el.host; // Polymer compat
+				if (items.has($el)) return $el;
 			}
-
-			//log('check', parent);
-			const item = items.get(parent);
-			if (item) return parent;
-			
-			return find_parent(parent);
+			return null;
 		}
 	}
 	
@@ -1130,14 +1168,23 @@ class MvSorter extends HTMLElement {
 		//this.dz_offsetTop = el.offsetTop;
 	}
 
-	find_target(node) {
+	find_target($el) {
 		const items = this.mv.monostate.items;
 		while (true) {
-			// log('consider', node);
-			if (!node) return null;
-			if (items.has(node)) return node;
-			if (node === this) return null;
-			node = node.parentElement;
+			// log('consider', $el);
+			if (!$el) return null;
+			if (items.has($el)) return $el;
+			if ($el === this) return null;
+			$el = $el.parentElement;
+		}
+	}
+
+	static find_target($el) {
+		const items = MvSorter._monostate.items;
+		while (true) {
+			if (!$el) return null;
+			if (items.has($el)) return $el;
+			$el = $el.parentElement;
 		}
 	}
 
@@ -1158,24 +1205,25 @@ class MvSorter extends HTMLElement {
 
 	static touchmove_handler(ev) {
 		if (ev.touches[1]) {
-			log("multitouch");
-			return;
+			// log("multitouch");
+			return true;
 		}
 		const touche = ev.touches[0];
 
 		// const ontop = this.shadowRoot.elementFromPoint(touche.clientX, touche.clientY);
 		// const target = this.find_target(touche.target);
 		const mono = MvSorter._monostate;
-		const target = mono.last_grabbed;
-		if (!target) return;
-		const item = mono.items.get(target);
+		const $target = mono.last_grabbed;
+		if (!$target) return true;
+		const item = mono.items.get($target);
 		// log('touchmove_handler moved', target);
 
 		ev.stopPropagation();
-		return item.container.track_move({
+		const $cont = $target.closest("mv-sorter");
+		return $cont.track_move({
 			x: touche.clientX,
 			y: touche.clientY,
-		}, target);
+		}, $target);
 		
 	}
 
@@ -1222,13 +1270,18 @@ class MvSorter extends HTMLElement {
 		//log(`move ${target.id} (${Math.round(X.pos+X.offset+X.size/2)},${Math.round(Y.pos+Y.offset+Y.size/2)}) (${Math.round(X.t_origin+X.offset)},${Math.round(Y.t_origin+Y.offset)})`);
 	}
 
+	// FROM: find_dropzone
 	find_container(target) {
 		const mono = this.mv.monostate;
 		const items = mono.items;
 		const item = items.get(target);
 		const group = target.parentElement.group;
 
-		const grace = 10; // For edge cases
+		// TODO: allow drop after last item in sub-container even if last item is
+		// another container.
+
+		// const grace = 10; // For edge cases
+		const grace = 3; // For edge cases
 		
 		// Only drop in same container if no container group specified
 		if (!group) return this;
@@ -1241,7 +1294,7 @@ class MvSorter extends HTMLElement {
 				+ item[axis].offset);
 		}
 
-		//log(`find_dropzone for ${target.parentElement.id} ${MvSorter.desig(target)} (${midG.X},${midG.Y}) ()`);
+		log(`find_dropzone for ${target.parentElement.id} ${MvSorter.desig(target)} (${midG.X},${midG.Y}) ()`);
 
 		
 		let closest = Infinity;
@@ -1316,17 +1369,21 @@ class MvSorter extends HTMLElement {
 			}
 			
 			//dists[container.mv.id] = `${dir} ${dist}`;
-			//log(`Item ${target.id} -> ${container.mv.id} ${dir} ${dist}`);
 			
 			if (dist < closest) {
 				closest = dist;
 				cc.clear();
 			}
 
-			if (dist <= closest + grace) cc.add(container);
+			if (dist <= closest + grace) {
+				log("Item", item._id, "->", container.id, dir, dist);
+				cc.add(container);
+			}
 
-			//log('dist', container.id, dist);
+			// log('dist', container.id, dist);
 		}
+
+		log("cc", cc);
 
 		// Considering nested containers
 		let deepest = 0;
@@ -1343,12 +1400,13 @@ class MvSorter extends HTMLElement {
 		return found;
 	}
 
+	// FROM: render_items, animPosDrag, animPosFall
 	find_dropzone(target) {
 		const mono = this.mv.monostate;
 		const items = mono.items;
 		const item = items.get(target);
 
-		const cc = this.find_container(target);
+		const cc = this.find_container(target); // closest container
 		const mv = cc.mv;
 
 		// log(`Item ${item._id} -> ${cc.id}`);
@@ -1361,13 +1419,15 @@ class MvSorter extends HTMLElement {
 			mid[axis] = item[axis].pos + item[axis].pos_mid + item[axis].offset;
 		}
 
-		let midH, idxH;
 		const children = cc.mv.homes;
 		let slot_count = children.length + 1;
 		
 		const ax = cc.axisAB();
 		const axA = ax.A;
-		const midA = mid[axA];
+
+		const midA = mid[axA]; // Middle of item current pos on primary axis
+		let   midH; // Middle of item new home pos on primary axis
+		let   idxH; // Slot index of new home
 		
 		if (item.container === cc) {
 
@@ -1384,17 +1444,15 @@ class MvSorter extends HTMLElement {
 		
 		// Can't compare with current position if elements are of
 		// different sizes. That would cause "wobbling"
-		//log('item', midH, 'at', mid[axA], 'slots', slot_count);
-		//log(`${item._id} with home ${midH} now at ${mid[axA]}`);
+		log('item', MvSorter.desig(target), midH, 'at', mid[axA], 'slots', slot_count);
+		log(`${item._id} with home ${midH} now at ${mid[axA]}`);
 		
 		let idx;
 		if (midA < midH) {
-			let oA = midH + item[axA].pos_mid;
+			let oA = midH + item[axA].pos_mid; // edge pos
 			for (let i = idxH; i >= 0; i--) {
-				//const child_item = items.get( children[i] );
-				//const ci_width = child_item ? child_item.width : item.width;
 
-				const ci = items.get(children[i]);
+				const ci = items.get(children[i]); // child item
 				const ci_size = ci ? ci[axA].m_size : item[axA].m_size;
 				
 				let size = ci_size;
@@ -1434,6 +1492,8 @@ class MvSorter extends HTMLElement {
 		if (idx !== undefined) cc.assign_dropzone(target, idx);
 	}
 
+	// Places target in a container home
+	// FROM: find_dropzone
 	assign_dropzone(s_target, idxIn) {
 		const mv = this.mv;
 		const mono = mv.monostate;
@@ -1488,7 +1548,7 @@ class MvSorter extends HTMLElement {
 			offset[ax.B] = oB + s_item[ax.B].m1 - zoneD[ax.B].offset;
 			dz_style.transform = `translate(${offset.X}px,${offset.Y}px) `;
 			
-			oA += s_item[ax.A].size + s_item[ax.A].m2;
+			oA += s_item[ax.A].size + s_item[ax.A].m2 + mv.gap;
 			idx++;
 		}
 		
@@ -1550,7 +1610,7 @@ class MvSorter extends HTMLElement {
 					}
 				}
 
-				oA += A.size + A.m2;
+				oA += A.size + A.m2 + mv.gap;
 				idx++;
 			}
 
@@ -1558,13 +1618,13 @@ class MvSorter extends HTMLElement {
 			
 			mv.homes = homesNew;
 
-			const mv_size = Math.round(oA - mv[ax.A].a) + "px";
+			const mv_size = Math.round(oA - mv.gap - mv[ax.A].a) + "px";
 			if (mv_size !== mv.$main.style[ax.min_inline]) {
 				// console.warn("assign_dropzone", mv.id, mv.$main.style[ax.min_inline],
 				// 	"->",	mv_size);
 
 				// Trigger container_moved()
-				mv.$main.style[ax.min_inline] = mv_size;
+				mv.$main.style[ax.min_inline] = mv_size; // FIXME
 				resized = true;
 
 				//TODO: Use raf instead of direkt resize. For this, we should meassure
@@ -1584,6 +1644,8 @@ class MvSorter extends HTMLElement {
 
 	}
 	
+	//Can target be dropped in this container?
+	// FROM: find_container
 	allows_target(target) {
 		// Might be extended to consider the current situation for each item;
 
@@ -1592,7 +1654,7 @@ class MvSorter extends HTMLElement {
 		// Defaults to only check for matching group;
 		if (this.group !== target.parentElement.group) return false;
 
-		// Sanity check for not dropping element inside itself;
+		// Do not allow target to drop in a container that is a child of target
 		if (this.has_parent(target)) return false;
 
 		//log('allows_target', 'yes');
@@ -1600,11 +1662,16 @@ class MvSorter extends HTMLElement {
 		return true;
 	}
 
+	// Check if this container has the target as a parent. For nested
+	// containers, dont allow a sortable target to be dropped in a container
+	// that is a child of the target.
+
 	has_parent(target) {
+		// log("has_parent", this, target);
 		const parent = this.mv.parent_target;
 		if (!parent) return false;
 
-		if (parent == target) return true;
+		if (parent === target) return true;
 
 		const item = this.mv.monostate.items.get(parent);
 		if (!item) return false;
@@ -1982,11 +2049,12 @@ class MvSorter extends HTMLElement {
 
 	static desig(target) {
 		if (target.id) return target.id;
-		if (target.firstChild) {
-			if (target.firstChild.textContent) {
-				return target.firstChild.textContent;
-			}
+		for (const $el of target.childNodes) {
+			const txt = $el.textContent;
+			if (typeof txt !== 'string') continue;
+			if (txt.match(/\S/)) return txt; 
 		}
+
 		return '?';
 	}
 

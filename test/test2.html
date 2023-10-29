@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<link rel="stylesheet" href="../mv-sorter.css">
+
+<script type="module">
+  import '../mv-sorter.js';
+</script>
+<style>
+  mv-sorter > section {
+    /* margin: 1em; */
+    padding: .5em;
+    background: #DDF;
+    border: thin solid grey;
+  }
+  mv-sorter mv-draghandle {
+		position: absolute;
+		bottom: 0;
+		right: 2px;
+	}
+  html { background: #EEE }
+  mv-sorter {
+    --gap: .3em;
+    box-shadow: initial;
+  }
+  section > mv-sorter {
+    padding-left: 1em;
+  }
+
+</style>
+
+<mv-sorter column autosave id="s1" group="1">
+  <section>
+    <header>A</header>
+    <mv-sorter column autosave id="Am" group="1">
+      <section>
+        <header>A1</header>
+        <mv-sorter column autosave id="A1m" group="1">
+        </mv-sorter>
+      </section>
+      <section>
+        <header>A2</header>
+        <mv-sorter column autosave id="A2m" group="1">
+        </mv-sorter>
+      </section>
+    </mv-sorter>
+  </section>
+  <section>
+    <header>B</header>
+    <mv-sorter column autosave id="Bm" group="1">
+      <section>
+        <header>B1</header>
+        <mv-sorter column autosave id="B1m" group="1">
+        </mv-sorter>
+      </section>
+      <section>
+        <header>B2</header>
+        <mv-sorter column autosave id="B2m" group="1">
+        </mv-sorter>
+      </section>
+    </mv-sorter>
+  </section>
+</mv-sorter>
+
+
+<pre id="log">Log 3:
+</pre>
