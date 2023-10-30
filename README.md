@@ -6,13 +6,15 @@ Drag and drop for lists as a web component.
 
 ## Demo
 
-See [Demo](https://jonas.liljegren.org/project/mv-sorter/dist/demo/).
+See [Demo](https://jonas.liljegren.org/project/mv-sorter/test/).
 
 ## Features
 
 * Natural movement of items using kinetic momentum
 
 * Performant (using requestAnimationFrame and css translate)
+
+* No dependencies
 
 * Clean and powerful api
 
@@ -24,7 +26,7 @@ See [Demo](https://jonas.liljegren.org/project/mv-sorter/dist/demo/).
 
 * Supports both mouse and touch interfaces
 
-* Unopiniated styling
+* Unopinionated styling
 
 * No creation of additional wrapper dom nodes
 
@@ -34,15 +36,15 @@ See [Demo](https://jonas.liljegren.org/project/mv-sorter/dist/demo/).
 
 * Handles elements of different sizes
 
-* supports drop of element anywhere on page, finding the closest availible drop area
+* Supports drop of element anywhere on page, finding the closest availible drop area
 
-* handles changing visibility of drop zones
+* Handles changing visibility of drop zones
 
-* optional drag handles
+* Optional drag handles
 
-* supports multiple and nested sortable containers
+* (almost) supports multiple and nested sortable containers
 
-* configurable drop zones per container.
+* Configurable drop zones per container.
 
 * Dispatches events and uses css classes for changing states
 
@@ -64,7 +66,7 @@ npm install --save mv-sorter
 <html>
   <head>
     <script type="module">
-      import 'mv-sorter/sorter.js';
+      import '../mv-sorter.js';
     </script>
   </head>
   <body>
@@ -98,19 +100,7 @@ customElements.define('sample-element', SampleElement);
 If you want to send a PR to this element, here are
 the instructions for running the tests and demo locally:
 
-### Installation
-```sh
-git clone https://github.com/aigan/mv-sorter
-cd mv-sorter
-npm install
-npm install -g polymer-cli
-```
 
-### Running the demo locally
-```sh
-polymer serve --npm
-open http://127.0.0.1:<port>/demo/
-```
-
-Or you can compile a static version to `dist` for use with a normal
-web server: `grunt demo`
+### Running polymer demo
+Polymer not needed, but you can compile ir for the demo of using
+mv-sorter in polymer with `grunt demo`.

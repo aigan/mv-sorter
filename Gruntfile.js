@@ -61,7 +61,7 @@ module.exports = function(grunt) {
 			'demo':{
 				expand: true,
 				cwd: '.',
-				src: 'demo/*',
+				src: 'polymer-demo/*',
 				dest: dest,
 				options: es_demo_postprocess,
 			},

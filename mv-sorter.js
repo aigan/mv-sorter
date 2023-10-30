@@ -45,7 +45,7 @@ class MvSorter extends HTMLElement {
 		if (1) { //debug
 			const els_old = [...this.children].map($el => MvSorter.desig($el));
 			const els_new = this.elements().map($el => MvSorter.desig($el));
-			log("Commit", this.id, els_old, "=>", els_new);
+			//log("Commit", this.id, els_old, "=>", els_new);
 		}
 		this.replaceChildren(... this.elements());
 	}
@@ -54,7 +54,7 @@ class MvSorter extends HTMLElement {
 	 * Returns an array of elements currently placed in this container.
 	 */
 	elements() {
-		log("homes", this.id, this.mv.homes);
+		//log("homes", this.id, this.mv.homes);
 		return this.mv.homes.slice(0);
 	}
 
@@ -620,7 +620,7 @@ class MvSorter extends HTMLElement {
 
 		for (const cont of mono.dirty) { 
 			if (cont === this) continue;
-			log("sub-commit", cont.id);
+			//log("sub-commit", cont.id);
 			cont.commit();
 		}
 
@@ -741,7 +741,7 @@ class MvSorter extends HTMLElement {
 		Y.offset = Y_new;
 
 		// for DEBUG
-		if (true) { // X_prev !== X.offset || Y_prev !== Y.offset ){
+		if (false) { // X_prev !== X.offset || Y_prev !== Y.offset ){
 			//log(`*** ${this.id} ${MvSorter.desig(target)} (${Math.round(X_prev)},${Math.round(Y_prev)})-> (${Math.round(X_new)},${Math.round(Y_new)}) `);
 			log(`${this.id} ${MvSorter.desig(target)} Size ${X.m_size},${Y.m_size}`);
 		}
@@ -940,7 +940,7 @@ class MvSorter extends HTMLElement {
 		const item = this.mv.monostate.items.get(target);
 		if (!item || !item.grabbed) return;
 
-		log(`item_drag_end ${item._id} (${item.X.pos_end},${item.Y.pos_end}) --> (${item.X.pos_home},${item.Y.pos_home}) `);
+		//log(`item_drag_end ${item._id} (${item.X.pos_end},${item.Y.pos_end}) --> (${item.X.pos_home},${item.Y.pos_home}) `);
 
 		item.throwed = true;
 		item.grabbed = false;
@@ -987,7 +987,7 @@ class MvSorter extends HTMLElement {
 		const $cont = item.container;
 		const $orig = $cont.element_origin(target);
 		
-		log('item_moved', item._id, $orig.id, "=>", $cont.id );
+		//log('item_moved', item._id, $orig.id, "=>", $cont.id );
 
 		//# Workaround for possible race conditions.
 		// item.container.assign_dropzone(target, item.idx);
@@ -1294,7 +1294,7 @@ class MvSorter extends HTMLElement {
 				+ item[axis].offset);
 		}
 
-		log(`find_dropzone for ${target.parentElement.id} ${MvSorter.desig(target)} (${midG.X},${midG.Y}) ()`);
+		//log(`find_dropzone for ${target.parentElement.id} ${MvSorter.desig(target)} (${midG.X},${midG.Y}) ()`);
 
 		
 		let closest = Infinity;
@@ -1376,14 +1376,14 @@ class MvSorter extends HTMLElement {
 			}
 
 			if (dist <= closest + grace) {
-				log("Item", item._id, "->", container.id, dir, dist);
+				//log("Item", item._id, "->", container.id, dir, dist);
 				cc.add(container);
 			}
 
 			// log('dist', container.id, dist);
 		}
 
-		log("cc", cc);
+		//log("cc", cc);
 
 		// Considering nested containers
 		let deepest = 0;
@@ -1444,8 +1444,8 @@ class MvSorter extends HTMLElement {
 		
 		// Can't compare with current position if elements are of
 		// different sizes. That would cause "wobbling"
-		log('item', MvSorter.desig(target), midH, 'at', mid[axA], 'slots', slot_count);
-		log(`${item._id} with home ${midH} now at ${mid[axA]}`);
+		//log('item', MvSorter.desig(target), midH, 'at', mid[axA], 'slots', slot_count);
+		//log(`${item._id} with home ${midH} now at ${mid[axA]}`);
 		
 		let idx;
 		if (midA < midH) {
