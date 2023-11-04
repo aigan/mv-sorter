@@ -30,6 +30,7 @@
 <mv-sorter id="s1" group="1" >
   <div>A</div>
   <div>B<mv-draghandle>&#9776</mv-draghandle></div>
+  <div>C</div>
 </mv-sorter>
 <div>
   <button onclick="s1.reset()">Reset</button>
@@ -38,10 +39,11 @@
   <button onclick="console.log(s1.elements_added())">List Added</button>
   <button onclick="console.log(s1.is_altered)">Altered?</button>
   <button onclick="s1.commit()">Commit</button>
+  <button onclick="console.log(s1.test_dropzone())">Test dropzone</button>
 </div>
 <hr>
-<mv-sorter id="s2" group="1"><div>C</div><div>D</div></mv-sorter>
+<mv-sorter id="s2" group="1"><div>D</div><div>E</div></mv-sorter>
 
 
-<pre id="log">Log 3:
+<pre id="mv-debug">
 </pre>

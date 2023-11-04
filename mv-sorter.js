@@ -486,7 +486,7 @@ class MvSorter extends HTMLElement {
 				A.pos = A.pos_end = A.pos_home;
 				B.pos = B.pos_end = B.pos_home;
 			} else {
-				item.container.find_dropzone(target);
+				item.container.update_dropzone(target);
 				// anim both since we check pos in animScaleCrash 
 				for (let axis of ['X', 'Y']) {
 					item[axis].pos_end = item[axis].pos_home;
@@ -655,7 +655,7 @@ class MvSorter extends HTMLElement {
 			offset_handle: 0, // relative target
 			t_origin: 0,      // transform origin
 			size: 0,          // size excluding margins
-			grab: 0,    // half the size of the handle
+			grab: 0,          // half the size of the handle
 			m_size: 0,        // size including margins
 			m1: 0,            // first margin
 			m2: 0,            // second margin
@@ -963,7 +963,7 @@ class MvSorter extends HTMLElement {
 		if (speed2 < 1) boost = 4 ** speed2;
 		else boost = (3 + speed2) / speed2;
 
-		// log("drop speed", item._id, speed2, boost);
+		// log("drop speed", item._id, speed2, boost, item.X.pos_speed, item.X.pos_speed);
 
 		for (let axis of this.mv.axes) {
 			const axB = MvSorter.axisB(axis);
@@ -1400,14 +1400,20 @@ class MvSorter extends HTMLElement {
 		return found;
 	}
 
+	update_dropzone(target) { 
+		const cc = this.find_container(target); // closest container
+		const idx = cc.find_dropzone(target);
+		if (idx == null) return;
+		cc.assign_dropzone(target, idx);
+	}
+
 	// FROM: render_items, animPosDrag, animPosFall
 	find_dropzone(target) {
-		const mono = this.mv.monostate;
+		const cc = this;
+		const mv = cc.mv;
+		const mono = mv.monostate;
 		const items = mono.items;
 		const item = items.get(target);
-
-		const cc = this.find_container(target); // closest container
-		const mv = cc.mv;
 
 		// log(`Item ${item._id} -> ${cc.id}`);
 		//log(`Item ${target.id}`, dists, cc.id);
@@ -1424,6 +1430,8 @@ class MvSorter extends HTMLElement {
 		
 		const ax = cc.axisAB();
 		const axA = ax.A;
+		const gap = mv.gap;
+		const halfgap = gap / 2;
 
 		const midA = mid[axA]; // Middle of item current pos on primary axis
 		let   midH; // Middle of item new home pos on primary axis
@@ -1445,52 +1453,101 @@ class MvSorter extends HTMLElement {
 		// Can't compare with current position if elements are of
 		// different sizes. That would cause "wobbling"
 		//log('item', MvSorter.desig(target), midH, 'at', mid[axA], 'slots', slot_count);
-		//log(`${item._id} with home ${midH} now at ${mid[axA]}`);
+		// log(`${item._id} with home ${midH} now at ${midA}`);
 		
-		let idx;
+		let idx; // Find destination idx or target
+		// oA = pixel pos for breakpoint on A axis
+		// cc.show_line(midA,'brown','midA');
+	
 		if (midA < midH) {
-			let oA = midH + item[axA].pos_mid; // edge pos
+			// log('LEFT');
+			let oA = midH + item[axA].pos_mid + halfgap; // edge pos
+
 			for (let i = idxH; i >= 0; i--) {
+				// log('LEFT', i, oA);
+				// cc.show_line(oA, 'green', 'oA');
 
 				const ci = items.get(children[i]); // child item
-				const ci_size = ci ? ci[axA].m_size : item[axA].m_size;
+				const ci_size = ci ? ci[axA].m_size : item[axA].m_size; // including margins
 				
 				let size = ci_size;
 				if (item[axA].m_size < size) size = item[axA].m_size;
 				//log(`${i} ${ci ? ci._id : 'dropzone'} Before ${oA} + ${size}`);
-				oA -= ci_size;
-				if (midA < oA + size) {
+
+				oA -= ci_size + gap;
+
+				const breakA = oA + size + halfgap;
+				// cc.show_line(breakA, 'green','break');
+				if (midA < breakA) {
 					idx = i;
 				} else break;
+
 			}
 		} else if (midA > midH) {
+			// log('RIGHT');
 			idx = 0;
 
 			//let oX = cc.mv.X.offset;
-			let oA = mv[axA].a + mv[axA].p1;; //add first margin?
+			let oA = mv[axA].a + mv[axA].p1 - halfgap;
 			
 			for (let i = 0; i < slot_count; i++) {
-				// TODO: FIXME:  add first margin left?
+				// log('RIGHT', i, oA);
+				// cc.show_line(oA,'red','oA');
 
-				//const child_item = items.get( children[i] );
-				//const ci_width = child_item ? child_item.width : item.width;
+				const ci = items.get(children[i]); // child item
+				const ci_size = ci ? ci[axA].m_size : item[axA].m_size; // including margins
 
-				const ci = items.get(children[i]);
-				const ci_size = ci ? ci[axA].m_size : item[axA].m_size;
-
-				let size = ci_size;
+				let size = ci_size ;
 				if (item[axA].m_size < size) size = item[axA].m_size;
-				//log(`${i} ${ci ? ci._id : 'dropzone'} After ${oA} - ${size}`);
-				oA += ci_size;
-				if (midA > oA - size) {
+				// log(`${i} ${ci ? ci._id : 'dropzone'} After ${oA} - ${size}`);
+
+
+				oA += ci_size + gap;
+
+				const breakA = oA - size - halfgap;
+				// cc.show_line(breakA, 'green', 'break');
+				if (midA > breakA) {
 					idx = i;
 				} else break;
-				
+
 			}
 		}
 
-		if (idx !== undefined) cc.assign_dropzone(target, idx);
+		return idx;
 	}
+
+	test_dropzone( pos=70 ) { 
+		const cc = this;
+		const mv = cc.mv;
+		const mono = mv.monostate;
+		const items = mono.items;
+
+		const target = mv.homes[0];
+		const item = items.get(target);
+		log("test with", MvSorter.desig(target));
+		item.X.pos = pos;
+		const idx = cc.find_dropzone(target);
+
+		return idx;
+	}
+
+	show_line(x,color='red',label='mark') { 
+		let bar = document.getElementById(label);
+		if (!bar) {
+			bar = document.createElement('div');
+			const s = bar.style;
+			s.position = "absolute";
+			s.top = 0;
+			bar.id = label;
+			s.height = "100vh";
+			document.body.append(bar);
+		}
+
+		const s = bar.style;
+		s.left = x+'px';
+		s['border-left'] = "thin solid " + color;
+	}
+
 
 	// Places target in a container home
 	// FROM: find_dropzone
@@ -1512,6 +1569,8 @@ class MvSorter extends HTMLElement {
 		const zone_cont = zoneD.container = this; // TODO: use the containers zone
 
 		const s_item = items.get(s_target);
+
+		if (s_item.idx === idxIn && s_item.container === this) return; // no change
 
 		s_item.container.mv.zone.style.opacity = 0;
 		zone.style.opacity = 1;
@@ -1842,9 +1901,18 @@ class MvSorter extends HTMLElement {
 			A.pos_speed = pos_speed;
 			A.pos = pos_now + pos_speed * delta / 16;
 
+			const $debug = document.getElementById('mv-debug');
+			if ($debug) { 
+				const x_pos = parseInt(item.X.pos);
+				const y_pos = parseInt(item.Y.pos);
+				const x_spd = parseInt(item.X.pos_speed);
+				const y_spd = parseInt(item.Y.pos_speed);
+				$debug.textContent = `${x_pos},${y_pos} (${x_spd},${y_spd})`;
+			}
+
 			if (slowUpdateLast + slowUpdateStep < now) {
 				if (Math.abs(last_zonecheck - A.pos) >= 1) {
-					item.container.find_dropzone(target);
+					item.container.update_dropzone(target);
 					last_zonecheck = A.pos;
 				}
 				slowUpdateLast = now;
@@ -1906,6 +1974,7 @@ class MvSorter extends HTMLElement {
 			// apply friction if we are going in the wrong direction
 			if (dir * pos_speed < 0) {
 				pos_speed *= friction;
+				// log( 'fall', target.id, axis, 'wrong way', pos_speed );
 			}
 
 			// Additional friction if we are close to end
@@ -1918,9 +1987,9 @@ class MvSorter extends HTMLElement {
 			if (item.throwed) {
 				if (Math.abs(pos_speed) < midAirSlow) {
 					if (!A.turned) {
-						//log(`Turning ${target.id} ${axis} (${A.pos}) speed ${pos_speed}` );
+						// log(`Turning ${target.id} ${axis} (${A.pos}) speed ${pos_speed}` );
 						
-						item.container.find_dropzone(target);
+						item.container.update_dropzone(target);
 						
 						// anim both since we check pos in animScaleCrash 
 						for (let axis of ['X', 'Y']) {
