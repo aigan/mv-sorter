@@ -1,11 +1,11 @@
 mv-sorter > .moved {
-	box-shadow: 0 4px 8px 0 #777;
-	transition: box-shadow .2s;
+ box-shadow: 0 .25rem .5rem 0 #777;
+ transition: box-shadow .2s;
 }
 
 mv-sorter:not(.moving-child):not([disabled]) > :hover {
-	box-shadow: 0 0 15px 5px rgba(255, 255, 190, .75);
-	outline: 1px solid #eee;
+	box-shadow: 0 0 2rem .5rem rgba(255 255 190 / .8);
+	outline: .0625rem solid rgba(0 0 0 / .5);
 	transition: box-shadow .2s;
 	z-index: 2;
 }
@@ -18,5 +18,5 @@ mv-sorter[disabled] {
 }
 
 mv-sorter {
-	box-shadow: 0 0 .7em .3em inset rgb(0 0 0 /.2);
+	box-shadow: 0 0 .7rem .3rem inset rgb(0 0 0 /.05);
 }

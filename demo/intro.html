@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<link rel="stylesheet" href="../mv-sorter.css">
+<script type="module" src="../mv-sorter.js"></script>
+
+<style>
+mv-sorter {
+	--gap: .3rem;
+	margin: 1rem 0;
+}
+mv-sorter > div {
+	padding: .2rem 1rem;
+	background: lightblue;
+	border: .2rem solid grey;
+}
+</style>
+
+<section>
+	<mv-sorter group=1>
+		<div>A</div>
+		<div>BBB</div>
+		<div>CCCCCCCCC</div>
+	</mv-sorter>
+	<mv-sorter group=1>
+		<div>D</div>
+	</mv-sorter>
+</section>

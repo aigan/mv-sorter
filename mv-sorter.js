@@ -35,6 +35,16 @@ class MvSorter extends HTMLElement {
 		},
 	}
 
+	static _monostate = {
+		animQueue: new Set(),
+		items: new Map(),
+		containers: new Set(),
+		dirty: new Set(),
+		render_jobs: new Map(),
+		last_grabbed: null,
+		warned_container_resize: false,
+	}
+
 	/*
 	 * Commits all items in current container, affecting other
 	 * containers if items in this container has been moved to/from other
@@ -245,13 +255,6 @@ class MvSorter extends HTMLElement {
 	
 	constructor() {
 		super();
-		if (!MvSorter._monostate) MvSorter._monostate = {
-			animQueue: new Set(),
-			items: new Map(),
-			containers: new Set(),
-			dirty: new Set(),
-			render_jobs: new Map(),
-		};
 
 		const $root = this.attachShadow({ mode: "open" });
 		$root.innerHTML = MvSorter.template;
@@ -279,18 +282,21 @@ class MvSorter extends HTMLElement {
 		this.constructor.debounced_items_moved =
 			debounce(MvSorter.items_moved, 200);
 
+		// Timing based on transition animation time
+		mv.debounced_container_moved = debounce(()=>{
+			this.container_moved();
+			MvSorter.items_moved();
+		},500);
 		
 		//# global touch handlers
 		window.addEventListener('touchmove', MvSorter.touchmove_handler);
 		window.addEventListener('touchstart', MvSorter.touchstart_handler, { passive: false });
 		window.addEventListener('touchend', MvSorter.touchend_handler, { passive: false });
-		
 
+		//# global mouse handlers
+		window.addEventListener('mousemove', MvSorter.mousemove_handler);
+		window.addEventListener('mouseup', MvSorter.mouseup_handler);
 
-		// Import global styles to page
-		// const style = document.createElement('style');
-		// style.innerHTML = 'body.mv-moving-child{cursor:move}';
-		// document.body.appendChild(style);
 	}
 
 	connectedCallback() {
@@ -329,32 +335,29 @@ class MvSorter extends HTMLElement {
 
 		this.container_rect_changed();
 
-		mv.$drag_image = document.createElement('div');
+		//mv.$drag_image = document.createElement('div');
 
 		mv.bound_tap_handler = this.tap_handler.bind(this);
 		mv.bound_dragstart_handler = this.dragstart_handler.bind(this);
-		mv.bound_dragend_handler = this.dragend_handler.bind(this);
-		mv.bound_drag_handler = this.drag_handler.bind(this);
+		//mv.bound_dragend_handler = this.dragend_handler.bind(this);
+		//mv.bound_drag_handler = this.drag_handler.bind(this);
 
 		// const mono = mv.monostate;
 		// mono.bound_touchmove_handler = this.touchmove_handler.bind(this);
 
 		this.addEventListener('click', mv.bound_tap_handler);
 		this.addEventListener('dragstart', mv.bound_dragstart_handler);
-		this.addEventListener('dragend', mv.bound_dragend_handler);
-		this.addEventListener('drag', mv.bound_drag_handler);
+		//this.addEventListener('dragend', mv.bound_dragend_handler);
+		//this.addEventListener('drag', mv.bound_drag_handler);
 	}
 
-	disconnectedCallback() {
-
-		// Disconnection happens during movement. Keep things around in case they
-		// will be attached again.
-		return;
-
+	
+	// Disconnection happens during movement. Keep things around in case they
+	// will be attached again.
+	disabled_disconnectedCallback() {
 		const mono = this.mv.monostate;
 		const items = mono.items;
-
-		log('[-]', this.id);
+		//log('[-]', this.id);
 		
 		// Setting display to none should make offsetParent return null
 		// which will disable updates during our removal of the children here
@@ -827,12 +830,21 @@ class MvSorter extends HTMLElement {
 	}
 
 	dragstart_handler(ev) {
-		ev.dataTransfer.setDragImage(this.mv.$drag_image, 0, 0);
-	
 		const $target = this.find_target(ev.target);
+
+		//# invisible drag image not supported cross-browser. Have to use
+		//# preventDefault and listen to mouseup or hide the image while
+		//# its handled in window, by displacing it. But since dragging
+		//# stops mousemove events, we can't use drag api at all.
+
+		//ev.dataTransfer.setDragImage(this.mv.$drag_image, 0, 0);
+		//ev.dataTransfer.setDragImage($target, -99999, -99999);
+		ev.preventDefault();
+	
 		const $handle = $target.querySelector("MV-DRAGHANDLE");
 
-		// log('drag start', ev, ev.target, $target, $handle);
+		//log('drag start', ev, ev.target, $target, $handle);
+
 		this.item_drag_start($target, $handle, {
 			x: ev.clientX,
 			y: ev.clientY,
@@ -864,7 +876,7 @@ class MvSorter extends HTMLElement {
 		const mono = this.mv.monostate;
 		const item = mono.items.get($target);
 
-		// log('item_drag_start', target, item, handle );
+		//log('item_drag_start', item, grabpoint );
 
 		if (!item) return;
 
@@ -1195,7 +1207,7 @@ class MvSorter extends HTMLElement {
 	}
 
 	drag_handler(ev) {
-		// log('drag', ev);
+		log('drag', ev, MvSorter._monostate.last_grabbed);
 		const $target = this.find_target(ev.target);
 		return this.track_move({
 			x: ev.clientX,
@@ -1219,12 +1231,35 @@ class MvSorter extends HTMLElement {
 		// log('touchmove_handler moved', target);
 
 		ev.stopPropagation();
-		const $cont = $target.closest("mv-sorter");
-		return $cont.track_move({
+//		const $cont = $target.closest("mv-sorter");
+		item.container.track_move({
 			x: touche.clientX,
 			y: touche.clientY,
 		}, $target);
 		
+	}
+
+	static mousemove_handler(ev){
+		if( !MvSorter._monostate.last_grabbed ) return;
+		ev.stopPropagation();
+
+		const mono = MvSorter._monostate;
+		const $target = mono.last_grabbed;
+		const item = mono.items.get($target);
+		item.container.track_move({
+			x: ev.clientX,
+			y: ev.clientY,
+		}, $target );
+	}
+
+	static mouseup_handler(ev){
+		const mono = MvSorter._monostate;
+		const $target = mono.last_grabbed;
+		if( !$target ) return;
+		ev.stopPropagation();
+		const item = mono.items.get($target);
+		//log('dragend', item);
+		item.container.item_drag_end( $target );
 	}
 
 	track_move(track, target) {
@@ -1677,19 +1712,27 @@ class MvSorter extends HTMLElement {
 			
 			mv.homes = homesNew;
 
-			const mv_size = Math.round(oA - mv.gap - mv[ax.A].a) + "px";
-			if (mv_size !== mv.$main.style[ax.min_inline]) {
-				// console.warn("assign_dropzone", mv.id, mv.$main.style[ax.min_inline],
-				// 	"->",	mv_size);
+			const mv_size = Math.round(oA - mv.gap - mv[ax.A].a);
+			if (mv_size+"px" !== mv.$main.style[ax.min_inline]) {
+				if( mv_size > this.offsetWidth ){
+					if( !mono.warned_container_resize ){
+						mono.warned_container_resize = true;
+						console.warn("container resize not fully implemented");
+
+						//TODO: Use raf instead of direkt resize. For this, we
+						//should meassure the position of all elements before and
+						//after the change and adjust the position
+						//accordingly. The movement of containers could cause the
+						//relative position of dragged element to change.
+					}
+				}
 
 				// Trigger container_moved()
-				mv.$main.style[ax.min_inline] = mv_size; // FIXME
+				mv.$main.style[ax.min_inline] = mv_size + "px"; // FIXME
 				resized = true;
 
-				//TODO: Use raf instead of direkt resize. For this, we should meassure
-				//the position of all elements before and after the change and adjust
-				//the position accordingly. The movement of containers could cause the
-				//relative position of dragged element to change.
+				//# Fallback hack, updating after animation finished
+				mv.debounced_container_moved();
 			}
 		}
 
