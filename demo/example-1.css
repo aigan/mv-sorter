@@ -1,0 +1,9 @@
+mv-sorter {
+	--gap: .3rem;
+	margin: 1rem 0;
+}
+mv-sorter > div {
+	padding: .2rem 1rem;
+	background: lightblue;
+	border: .2rem solid grey;
+}

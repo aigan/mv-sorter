@@ -10,7 +10,7 @@ mv-sorter:not(.moving-child):not([disabled]) > :hover {
 	z-index: 2;
 }
 
-[draggable ] { cursor: move }
+[draggable] { cursor: move }
 
 mv-sorter[disabled] {
 	opacity: .5;

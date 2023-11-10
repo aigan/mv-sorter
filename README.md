@@ -6,7 +6,7 @@ Drag and drop for lists as a web component.
 
 ## Demo
 
-See [Demo](https://jonas.liljegren.org/project/mv-sorter/test/).
+See [Demo](https://blog.jonas.liljegren.org/mv-sorter/).
 
 ## Features
 
@@ -63,44 +63,36 @@ npm install --save mv-sorter
 
 ### In an html file
 ```html
-<html>
-  <head>
-    <script type="module">
-      import '../mv-sorter.js';
-    </script>
-  </head>
-  <body>
-    <mv-sorter><div>A</div><div>B</div></mv-sorter>
-  </body>
-</html>
+<script type="module" src="./mv-sorter.js"></script>
+<mv-sorter><div>A</div><div>B</div></mv-sorter>
 ```
 
-### In a Polymer 3 element
-```js
-import {PolymerElement, html} from '@polymer/polymer';
-import 'mv-sorter/mv-sorter.js';
+Supported attributes are:
+* row: elements are displayes horizontal (default)
+* column: elements are displayed vertical
+* lock: Only move in selected axis
+* group: Allow movement to other containers in the same group
+* autosave: move element in DOM after drop
+* disabled: make container inactive
 
-class SampleElement extends PolymerElement {
-  static get template() {
-    return html`
-      <mv-sorter><div>A</div><div>B</div></mv-sorter>
-    `;
-  }
-}
-customElements.define('sample-element', SampleElement);
-```
+Events you can listen to on the `mv-sorter` container:
+* drop: details `{element, item}`
+* dropoutside: details `{element, item}`
+
+Methods availible on the `mv-sorter` container:
+* reset(): move all items back to their original DOM positions
+* commit(): update DOM placing items in their new place
+* elements(): lists elements in the container, similar to what you would get from the DOM after a commit()
+* elements_removed(): list elements moved to another contianer
+* elements_added(): lists elements moved here from another container
+
+The property `is_altered` tells you if anything has changed, like sort order or anything added or removed.
+
+You can also add a `mv-draghandle` in an element for using that for dragging, instead of the whole element.
+
 
 ## Missing features
 
 * Keyboard and accessability support
 
 * Scroll viewport when items are dragged to edge
-
-## Contributing
-If you want to send a PR to this element, here are
-the instructions for running the tests and demo locally:
-
-
-### Running polymer demo
-Polymer not needed, but you can compile ir for the demo of using
-mv-sorter in polymer with `grunt demo`.

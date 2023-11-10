@@ -1,0 +1,76 @@
+<!DOCTYPE HTML>
+<script type="module">
+	import "https://para.se/proj/mv-sorter/mv-sorter.js";
+</script>
+
+<style>
+@import url("https://para.se/proj/mv-sorter/mv-sorter.css");
+
+#board {
+	--gap: 1rem;
+	box-shadow: none;
+}
+
+#board > column {
+	flex: 1;
+	border: .05rem solid black;
+	background: ghostwhite;
+}
+
+#board > column > header {
+	padding: .3rem 2rem;
+	background: lightblue;
+	display: inline-block;
+	width: 100%;
+	box-sizing: border-box;
+	position: relative;
+}
+
+#board > column > header > mv-draghandle{
+	position: absolute;
+	font-size: 1.2em;
+	left: 0;
+	top: 0;
+}
+
+#board > column > header > mv-draghandle::after{
+  content: '\028FF';
+}
+
+#board > column > mv-sorter {
+	margin: 1rem;
+	--gap: 1rem;
+	box-shadow: none;
+}
+
+#board > column > mv-sorter > div {
+	background: yellow;
+	padding: .7rem;
+	border: .1rem solid grey;
+}
+</style>
+
+<mv-sorter id="board" autosave>
+	<column>
+		<header>
+			<mv-draghandle></mv-draghandle>
+			Column 1
+		</header>
+		<mv-sorter column group="col" autosave>
+			<div>1 A</div>
+			<div>1 B</div>
+			<div>1 C</div>
+		</mv-sorter>
+	</column>
+	<column>
+		<header>
+			<mv-draghandle></mv-draghandle>
+			Column 2
+		</header>
+		<mv-sorter column group="col" autosave>
+			<div>2 A</div>
+			<div>2 B</div>
+			<div>2 C</div>
+		</mv-sorter>
+	</column>
+</mv-sorter>

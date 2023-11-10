@@ -1,0 +1,28 @@
+<!DOCTYPE HTML>
+<script type="module" src="https://para.se/proj/mv-sorter/mv-sorter.js"></script>
+
+<style>
+@import url("https://para.se/proj/mv-sorter/mv-sorter.css");
+
+#demo-handle {
+	--gap: 1rem;
+}
+#demo-handle > div {
+	padding: 1.5rem 2rem;
+	background: lightblue;
+}
+#demo-handle mv-draghandle {
+  position: absolute;
+  bottom: -.2rem;
+  right: 0;
+}
+#demo-handle mv-draghandle::after {
+  content: '\0283F';
+}
+
+</style>
+<mv-sorter id="demo-handle">
+  <div>A <mv-draghandle></mv-draghandle></div>
+  <div>B <mv-draghandle></mv-draghandle></div>
+  <div>C <mv-draghandle></mv-draghandle></div>
+</mv-sorter>
