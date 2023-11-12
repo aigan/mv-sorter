@@ -226,10 +226,11 @@ class MvSorter extends HTMLElement {
 	static get template() {
 		return html`
 		<style>
-		:host { display: block }
+		:host { display: flex }
 
 		main {
 			display: flex;
+			flex-basis: 100%;
 			gap: var(--gap); /* FIXME: add gap in distribution calc */
 			min-height: 20px;
 			min-width: 20px;
