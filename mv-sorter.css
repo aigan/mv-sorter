@@ -19,4 +19,8 @@ mv-sorter[disabled] {
 
 mv-sorter {
 	box-shadow: 0 0 .7rem .3rem inset rgb(0 0 0 /.05);
+
+	/* display and gap here to avoid FOUC */
+	display: flex;
+	gap: var(--gap);
 }

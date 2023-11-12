@@ -2,7 +2,7 @@
 const log = console.log.bind(console);
 function xlog(...logargs) {
 	console.log(...logargs);
-	const $log = document.getElementById('log');
+	const $log = document.getElementById('mv-debug');
 	if (!$log) return;
 	$log.insertAdjacentText('beforeend', logargs.join(" ")+"\n");
 }
@@ -288,6 +288,9 @@ class MvSorter extends HTMLElement {
 			MvSorter.items_moved();
 		},500);
 		
+
+		//# Global listeners will only be added once, since they are identical
+
 		//# global touch handlers
 		window.addEventListener('touchmove', MvSorter.touchmove_handler);
 		window.addEventListener('touchstart', MvSorter.touchstart_handler, { passive: false });
@@ -302,7 +305,7 @@ class MvSorter extends HTMLElement {
 	connectedCallback() {
 		// super.connectedCallback();
 
-		//log('[+]', MvSorter.desig(this) );
+		// log('[+]', MvSorter.desig(this) );
 
 		const mv = this.mv; // put our data here
 
@@ -337,18 +340,11 @@ class MvSorter extends HTMLElement {
 
 		//mv.$drag_image = document.createElement('div');
 
-		mv.bound_tap_handler = this.tap_handler.bind(this);
+		// mv.bound_tap_handler = this.tap_handler.bind(this);
 		mv.bound_dragstart_handler = this.dragstart_handler.bind(this);
-		//mv.bound_dragend_handler = this.dragend_handler.bind(this);
-		//mv.bound_drag_handler = this.drag_handler.bind(this);
-
-		// const mono = mv.monostate;
-		// mono.bound_touchmove_handler = this.touchmove_handler.bind(this);
 
 		this.addEventListener('click', mv.bound_tap_handler);
 		this.addEventListener('dragstart', mv.bound_dragstart_handler);
-		//this.addEventListener('dragend', mv.bound_dragend_handler);
-		//this.addEventListener('drag', mv.bound_drag_handler);
 	}
 
 	
@@ -853,19 +849,21 @@ class MvSorter extends HTMLElement {
 
 	static touchstart_handler(ev) {
 		if (ev.touches[1]) return true;
-		const $target = MvSorter.find_target(ev.target);
+		//# Get the original target since we listen on the window
+		const $path0 = ev.composedPath()[0];
+		const $target = MvSorter.find_target($path0);
+		// log('touchstart', $target, ev.target);
 		if (!$target) return true;
 
-		const $cont = $target.closest("mv-sorter");
 		const $handle = $target.querySelector("MV-DRAGHANDLE");
-		if ($handle) if (!ev.target.closest("MV-DRAGHANDLE")) return true;
+		if ($handle) if (!$path0.closest("MV-DRAGHANDLE")) return true;
 
-		// log('touchstart', ev, ev.target, $target, $handle);
 		const touche = ev.touches[0];
 
 		ev.stopPropagation();
 		ev.preventDefault();
 
+		const $cont = $target.closest("mv-sorter");
 		$cont.item_drag_start($target, $handle, {
 			x: touche.clientX,
 			y: touche.clientY,
@@ -875,9 +873,6 @@ class MvSorter extends HTMLElement {
 	item_drag_start($target, $handle, grabpoint) {
 		const mono = this.mv.monostate;
 		const item = mono.items.get($target);
-
-		//log('item_drag_start', item, grabpoint );
-
 		if (!item) return;
 
 		if (item.grabbed) return; // already grabbed?
@@ -886,7 +881,7 @@ class MvSorter extends HTMLElement {
 		item.handle = $handle ?? $target;
 		item.grabbed = true;
 
-		// log('item_drag_start', item._id, target);
+		// log('item_drag_start', item._id, $target);
 		mono.last_grabbed = $target;
 
 		const rect = $target.getBoundingClientRect();
@@ -933,15 +928,15 @@ class MvSorter extends HTMLElement {
 	}
 
 	static touchend_handler(ev) {
-		const $target = MvSorter.find_target(ev.target);
-		if (!$target) return;
+		const $target = MvSorter.find_target(ev.composedPath()[0]);
+		// log("touchend", $target, ev.target);
+		if (!$target) return true;
 		const $cont = $target.closest("mv-sorter");
+
+		if (!$cont.item_drag_end($target)) return;
 
 		ev.stopPropagation();
 		ev.preventDefault();
-
-		// log("touchend", ev.target);
-		$cont.item_drag_end($target);
 	}
 
 	touchcancel_handler(ev) {
@@ -987,6 +982,7 @@ class MvSorter extends HTMLElement {
 			MvSorter.addAnim('pos' + axis, MvSorter.animPosFall(target, axis), target);
 			MvSorter.addAnim('rotate' + axB, MvSorter.animRotateRecover(target, axB), target);
 		}
+		return true;
 	}
 
 	static item_moved(target) {
@@ -1201,9 +1197,9 @@ class MvSorter extends HTMLElement {
 	}
 
 	tap_handler(ev) {
-		const target = this.find_target(ev.target);
-		if (!target) return;
-		// log('tap', target);
+		const $target = this.find_target(ev.target);
+		if (!$target) return;
+		// log('tap', target, this.mv.monostate.containers);
 	}
 
 	drag_handler(ev) {
@@ -1216,20 +1212,18 @@ class MvSorter extends HTMLElement {
 	}
 
 	static touchmove_handler(ev) {
-		if (ev.touches[1]) {
-			// log("multitouch");
-			return true;
-		}
+		if (ev.touches[1]) return true;
 		const touche = ev.touches[0];
 
 		// const ontop = this.shadowRoot.elementFromPoint(touche.clientX, touche.clientY);
 		// const target = this.find_target(touche.target);
 		const mono = MvSorter._monostate;
 		const $target = mono.last_grabbed;
+		// if(!$target) log('touchmove', $target, ev.target);
 		if (!$target) return true;
 		const item = mono.items.get($target);
-		// log('touchmove_handler moved', target);
-
+		
+		
 		ev.stopPropagation();
 //		const $cont = $target.closest("mv-sorter");
 		item.container.track_move({
@@ -1240,7 +1234,8 @@ class MvSorter extends HTMLElement {
 	}
 
 	static mousemove_handler(ev){
-		if( !MvSorter._monostate.last_grabbed ) return;
+		if (!MvSorter._monostate.last_grabbed) return;
+		// log('mousemove');
 		ev.stopPropagation();
 
 		const mono = MvSorter._monostate;
@@ -1845,7 +1840,7 @@ class MvSorter extends HTMLElement {
 	}
 
 	static stopAnim() {
-		//log("Stopping anim");
+		// log("Stopping anim");
 
 		// Only when all animations finished
 		const mono = MvSorter._monostate;
@@ -1944,13 +1939,13 @@ class MvSorter extends HTMLElement {
 			A.pos_speed = pos_speed;
 			A.pos = pos_now + pos_speed * delta / 16;
 
-			const $debug = document.getElementById('mv-debug');
-			if ($debug) { 
+			const $debug_pos = document.getElementById('mv-debug-pos');
+			if ($debug_pos) { 
 				const x_pos = parseInt(item.X.pos);
 				const y_pos = parseInt(item.Y.pos);
 				const x_spd = parseInt(item.X.pos_speed);
 				const y_spd = parseInt(item.Y.pos_speed);
-				$debug.textContent = `${x_pos},${y_pos} (${x_spd},${y_spd})`;
+				$debug_pos.textContent = `${x_pos},${y_pos} (${x_spd},${y_spd})`;
 			}
 
 			if (slowUpdateLast + slowUpdateStep < now) {

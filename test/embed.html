@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<script type="module">
+  import "https://jonas.liljegren.org/2023/components/jl/code/code.mjs";
+  import "https://jonas.liljegren.org/2023/components/jl/embed.mjs";
+  import "../mv-sorter.js";
+</script>
+<link rel="stylesheet" href="../mv-sorter.css">
+<style>
+mv-sorter {
+--gap: .3rem;
+margin: 1rem 0;
+}
+mv-sorter > div {
+padding: .2rem 1rem;
+background: lightblue;
+border: .2rem solid grey;
+}
+</style>
+<section>
+<mv-sorter group="1">
+  <div>A</div>
+  <div>BBB</div>
+  <div>CCCCCCCCC</div>
+</mv-sorter>
+<mv-sorter group="1">
+  <div>D</div>
+</mv-sorter>
+</section>
+<p>You can also add a <code>mv-draghandle</code> in an element for using that for dragging, instead of the whole element.</p>
+<p><jl-embed src="../demo/handle.html"></jl-embed><br>
+<p>Combining all this for a simple scrum-like board with sortable columns and items:<br>
+<jl-embed src="../demo/nested.html"></jl-embed><br>
